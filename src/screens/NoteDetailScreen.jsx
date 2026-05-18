@@ -1,0 +1,797 @@
+import { Ionicons } from '@expo/vector-icons';
+import { useMemo, useRef, useState } from 'react';
+import {
+  ActivityIndicator,
+  Animated,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+  useColorScheme,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+
+import { useAI } from '../hooks/useAI';
+import { useNotesStore } from '../store/useNotesStore';
+import { colors, getThemeColors } from '../theme/colors';
+import { typography } from '../theme/typography';
+
+const subjectColors = ['#7C3AED', '#0F6E56', '#854F0B', '#993556', '#185FA5'];
+
+function formatCreatedDate(value) {
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return '';
+  }
+
+  return new Intl.DateTimeFormat('tr-TR', {
+    day: '2-digit',
+    month: 'long',
+    year: 'numeric',
+  }).format(date);
+}
+
+function Flashcard({ card, index, themeColors }) {
+  const [isFlipped, setIsFlipped] = useState(false);
+  const animatedValue = useRef(new Animated.Value(0)).current;
+
+  function flipCard() {
+    Animated.spring(animatedValue, {
+      toValue: isFlipped ? 0 : 1,
+      friction: 8,
+      tension: 35,
+      useNativeDriver: true,
+    }).start();
+    setIsFlipped((current) => !current);
+  }
+
+  const frontRotate = animatedValue.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '180deg'],
+  });
+  const backRotate = animatedValue.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['180deg', '360deg'],
+  });
+
+  return (
+    <Pressable onPress={flipCard} style={styles.flashcardWrap}>
+      <Animated.View
+        style={[
+          styles.flashcard,
+          {
+            backgroundColor: themeColors.surface,
+            borderColor: themeColors.border,
+            transform: [{ rotateY: frontRotate }],
+          },
+        ]}
+      >
+        <Text style={[styles.flashcardLabel, { color: colors.primary }]}>
+          Kart {index + 1}
+        </Text>
+        <Text style={[styles.flashcardText, { color: themeColors.textPrimary }]}>
+          {card.front}
+        </Text>
+      </Animated.View>
+      <Animated.View
+        style={[
+          styles.flashcard,
+          styles.flashcardBack,
+          {
+            backgroundColor: colors.primary,
+            borderColor: colors.primary,
+            transform: [{ rotateY: backRotate }],
+          },
+        ]}
+      >
+        <Text style={styles.flashcardBackLabel}>Cevap</Text>
+        <Text style={styles.flashcardBackText}>{card.back}</Text>
+      </Animated.View>
+    </Pressable>
+  );
+}
+
+export default function NoteDetailScreen({ navigation, route }) {
+  const colorScheme = useColorScheme();
+  const themeColors = getThemeColors(colorScheme);
+  const noteId = route.params?.noteId;
+  const note = useNotesStore((state) =>
+    state.notes.find((item) => item.id === noteId)
+  );
+  const updateNote = useNotesStore((state) => state.updateNote);
+  const {
+    error,
+    summarize,
+    generateQuestions,
+    generateFlashcards,
+  } = useAI();
+  const [activeAction, setActiveAction] = useState(null);
+  const [localError, setLocalError] = useState(null);
+  const [lastAction, setLastAction] = useState(null);
+  const [selectedAnswers, setSelectedAnswers] = useState({});
+
+  const subjectColor = useMemo(() => {
+    if (!note?.subject) {
+      return subjectColors[0];
+    }
+
+    const index = note.subject
+      .split('')
+      .reduce((total, char) => total + char.charCodeAt(0), 0);
+    return subjectColors[index % subjectColors.length];
+  }, [note?.subject]);
+
+  if (!note) {
+    return (
+      <SafeAreaView
+        style={[styles.container, { backgroundColor: themeColors.background }]}
+      >
+        <View style={styles.missingWrap}>
+          <Text style={[styles.missingText, { color: themeColors.textPrimary }]}>
+            Not bulunamadı
+          </Text>
+          <Pressable style={styles.primaryButton} onPress={navigation.goBack}>
+            <Text style={styles.primaryButtonText}>Geri dön</Text>
+          </Pressable>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  const hasText = note.content?.trim().length > 0;
+  const isBusy = Boolean(activeAction);
+  const visibleError = localError || error;
+
+  async function runAIAction(actionName) {
+    if (!hasText) {
+      setLocalError('AI işlemleri için önce not içeriği eklemelisin.');
+      return;
+    }
+
+    setLocalError(null);
+    setLastAction(actionName);
+    setActiveAction(actionName);
+
+    if (actionName === 'summary') {
+      const summary = await summarize(note.content, note.subject || 'Genel');
+
+      if (summary) {
+        updateNote(note.id, { summary });
+      }
+    }
+
+    if (actionName === 'questions') {
+      const questions = await generateQuestions(note.content, note.subject || 'Genel');
+
+      if (questions) {
+        updateNote(note.id, { questions });
+        setSelectedAnswers({});
+      }
+    }
+
+    if (actionName === 'flashcards') {
+      const flashcards = await generateFlashcards(
+        note.content,
+        note.subject || 'Genel'
+      );
+
+      if (flashcards) {
+        updateNote(note.id, { flashcards });
+      }
+    }
+
+    setActiveAction(null);
+  }
+
+  function retryLastAction() {
+    if (lastAction) {
+      runAIAction(lastAction);
+    }
+  }
+
+  function selectAnswer(key, value) {
+    setSelectedAnswers((current) => ({
+      ...current,
+      [key]: value,
+    }));
+  }
+
+  function getMcOptionStyle(questionIndex, option) {
+    const key = `mc-${questionIndex}`;
+    const selected = selectedAnswers[key];
+
+    if (!selected) {
+      return {};
+    }
+
+    const correct = note.questions.multipleChoice[questionIndex].correct;
+    const optionLetter = option.charAt(0);
+
+    if (optionLetter === correct) {
+      return styles.correctOption;
+    }
+
+    if (selected === optionLetter) {
+      return styles.wrongOption;
+    }
+
+    return {};
+  }
+
+  function getTrueFalseStyle(questionIndex, value) {
+    const key = `tf-${questionIndex}`;
+    const selected = selectedAnswers[key];
+
+    if (selected === undefined) {
+      return {};
+    }
+
+    const correct = note.questions.trueFalse[questionIndex].answer;
+
+    if (value === correct) {
+      return styles.correctOption;
+    }
+
+    if (selected === value) {
+      return styles.wrongOption;
+    }
+
+    return {};
+  }
+
+  return (
+    <SafeAreaView
+      style={[styles.container, { backgroundColor: themeColors.background }]}
+    >
+      <View style={[styles.header, { borderBottomColor: themeColors.border }]}>
+        <Pressable onPress={navigation.goBack} style={styles.headerIconButton}>
+          <Ionicons name="chevron-back" size={26} color={themeColors.textPrimary} />
+        </Pressable>
+        <Text
+          style={[styles.headerTitle, { color: themeColors.textPrimary }]}
+          numberOfLines={1}
+        >
+          {note.title}
+        </Text>
+        <Pressable style={styles.headerIconButton}>
+          <Ionicons
+            name="ellipsis-horizontal"
+            size={24}
+            color={themeColors.textPrimary}
+          />
+        </Pressable>
+      </View>
+
+      {visibleError ? (
+        <View style={styles.errorBanner}>
+          <Text style={styles.errorText}>{visibleError}</Text>
+          <Pressable onPress={retryLastAction} style={styles.retryButton}>
+            <Text style={styles.retryText}>Tekrar dene</Text>
+          </Pressable>
+        </View>
+      ) : null}
+
+      <ScrollView contentContainerStyle={styles.content}>
+        <View
+          style={[
+            styles.section,
+            {
+              backgroundColor: themeColors.surface,
+              borderColor: themeColors.border,
+            },
+          ]}
+        >
+          <View style={styles.infoHeader}>
+            <View style={[styles.subjectPill, { backgroundColor: subjectColor }]}>
+              <Text style={styles.subjectText}>{note.subject || 'Genel'}</Text>
+            </View>
+            <Text style={[styles.dateText, { color: themeColors.textSecondary }]}>
+              {formatCreatedDate(note.createdAt)}
+            </Text>
+          </View>
+
+          {note.content ? (
+            <Text style={[styles.noteContent, { color: themeColors.textPrimary }]}>
+              {note.content}
+            </Text>
+          ) : null}
+
+          {note.fileUri ? (
+            <View style={styles.fileRow}>
+              <Ionicons
+                name="attach-outline"
+                size={18}
+                color={themeColors.textSecondary}
+              />
+              <Text
+                style={[styles.fileName, { color: themeColors.textSecondary }]}
+                numberOfLines={1}
+              >
+                {note.fileName}
+              </Text>
+            </View>
+          ) : null}
+        </View>
+
+        <View style={styles.actionRow}>
+          <Pressable
+            disabled={isBusy}
+            onPress={() => runAIAction('summary')}
+            style={({ pressed }) => [
+              styles.actionButton,
+              { backgroundColor: colors.primary },
+              (pressed || isBusy) && styles.actionPressed,
+            ]}
+          >
+            {activeAction === 'summary' ? (
+              <ActivityIndicator color="#FFFFFF" size="small" />
+            ) : (
+              <Ionicons name="sparkles-outline" size={18} color="#FFFFFF" />
+            )}
+            <Text style={styles.actionText}>Özetle</Text>
+          </Pressable>
+          <Pressable
+            disabled={isBusy}
+            onPress={() => runAIAction('questions')}
+            style={({ pressed }) => [
+              styles.actionButton,
+              { backgroundColor: '#185FA5' },
+              (pressed || isBusy) && styles.actionPressed,
+            ]}
+          >
+            {activeAction === 'questions' ? (
+              <ActivityIndicator color="#FFFFFF" size="small" />
+            ) : (
+              <Ionicons name="help-circle-outline" size={18} color="#FFFFFF" />
+            )}
+            <Text style={styles.actionText}>Sorular Üret</Text>
+          </Pressable>
+          <Pressable
+            disabled={isBusy}
+            onPress={() => runAIAction('flashcards')}
+            style={({ pressed }) => [
+              styles.actionButton,
+              { backgroundColor: '#0F6E56' },
+              (pressed || isBusy) && styles.actionPressed,
+            ]}
+          >
+            {activeAction === 'flashcards' ? (
+              <ActivityIndicator color="#FFFFFF" size="small" />
+            ) : (
+              <Ionicons name="albums-outline" size={18} color="#FFFFFF" />
+            )}
+            <Text style={styles.actionText}>Flashcard Oluştur</Text>
+          </Pressable>
+        </View>
+
+        {isBusy ? (
+          <View style={styles.aiLoading}>
+            <ActivityIndicator color={colors.primary} />
+            <Text style={[styles.aiLoadingText, { color: themeColors.textSecondary }]}>
+              AI çalışıyor...
+            </Text>
+          </View>
+        ) : null}
+
+        {note.summary ? (
+          <View
+            style={[
+              styles.section,
+              {
+                backgroundColor: themeColors.surface,
+                borderColor: themeColors.border,
+              },
+            ]}
+          >
+            <Text style={[styles.sectionTitle, { color: themeColors.textPrimary }]}>
+              Özet
+            </Text>
+            <Text style={[styles.bodyText, { color: themeColors.textPrimary }]}>
+              {note.summary.overview}
+            </Text>
+
+            <Text style={[styles.subsectionTitle, { color: themeColors.textPrimary }]}>
+              Anahtar Kavramlar
+            </Text>
+            {note.summary.keyConcepts?.map((concept) => (
+              <Text
+                key={concept}
+                style={[styles.bulletText, { color: themeColors.textSecondary }]}
+              >
+                {'\u2022'} {concept}
+              </Text>
+            ))}
+
+            <Text style={[styles.subsectionTitle, { color: themeColors.textPrimary }]}>
+              Önemli Terimler
+            </Text>
+            {note.summary.importantTerms?.map((item) => (
+              <Text
+                key={`${item.term}-${item.definition}`}
+                style={[styles.termText, { color: themeColors.textSecondary }]}
+              >
+                <Text style={{ color: themeColors.textPrimary, fontWeight: '700' }}>
+                  {item.term}:
+                </Text>{' '}
+                {item.definition}
+              </Text>
+            ))}
+          </View>
+        ) : null}
+
+        {note.questions && !Array.isArray(note.questions) ? (
+          <View
+            style={[
+              styles.section,
+              {
+                backgroundColor: themeColors.surface,
+                borderColor: themeColors.border,
+              },
+            ]}
+          >
+            <Text style={[styles.sectionTitle, { color: themeColors.textPrimary }]}>
+              Sorular
+            </Text>
+
+            {note.questions.multipleChoice?.map((question, questionIndex) => (
+              <View key={question.question} style={styles.questionBlock}>
+                <Text style={[styles.questionText, { color: themeColors.textPrimary }]}>
+                  {questionIndex + 1}. {question.question}
+                </Text>
+                {question.options.map((option) => {
+                  const optionLetter = option.charAt(0);
+
+                  return (
+                    <Pressable
+                      key={option}
+                      onPress={() => selectAnswer(`mc-${questionIndex}`, optionLetter)}
+                      style={[
+                        styles.optionButton,
+                        {
+                          borderColor: themeColors.border,
+                          backgroundColor: themeColors.background,
+                        },
+                        getMcOptionStyle(questionIndex, option),
+                      ]}
+                    >
+                      <Text
+                        style={[styles.optionText, { color: themeColors.textPrimary }]}
+                      >
+                        {option}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            ))}
+
+            {note.questions.trueFalse?.map((question, questionIndex) => (
+              <View key={question.question} style={styles.questionBlock}>
+                <Text style={[styles.questionText, { color: themeColors.textPrimary }]}>
+                  {question.question}
+                </Text>
+                <View style={styles.trueFalseRow}>
+                  {[true, false].map((value) => (
+                    <Pressable
+                      key={`${question.question}-${value}`}
+                      onPress={() => selectAnswer(`tf-${questionIndex}`, value)}
+                      style={[
+                        styles.trueFalseButton,
+                        {
+                          borderColor: themeColors.border,
+                          backgroundColor: themeColors.background,
+                        },
+                        getTrueFalseStyle(questionIndex, value),
+                      ]}
+                    >
+                      <Text
+                        style={[styles.optionText, { color: themeColors.textPrimary }]}
+                      >
+                        {value ? 'Doğru' : 'Yanlış'}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
+            ))}
+
+            {note.questions.openEnded?.map((question, index) => (
+              <View key={question.question} style={styles.openQuestion}>
+                <Text style={[styles.questionText, { color: themeColors.textPrimary }]}>
+                  Açık uçlu {index + 1}
+                </Text>
+                <Text style={[styles.bodyText, { color: themeColors.textSecondary }]}>
+                  {question.question}
+                </Text>
+              </View>
+            ))}
+          </View>
+        ) : null}
+
+        {note.flashcards?.length > 0 ? (
+          <View style={styles.flashcardSection}>
+            <Text style={[styles.sectionTitle, { color: themeColors.textPrimary }]}>
+              Flashcardlar
+            </Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              {note.flashcards.map((card, index) => (
+                <Flashcard
+                  key={`${card.front}-${index}`}
+                  card={card}
+                  index={index}
+                  themeColors={themeColors}
+                />
+              ))}
+            </ScrollView>
+          </View>
+        ) : null}
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  actionButton: {
+    alignItems: 'center',
+    borderRadius: 12,
+    flex: 1,
+    justifyContent: 'center',
+    minHeight: 74,
+    paddingHorizontal: 8,
+  },
+  actionPressed: {
+    opacity: 0.7,
+  },
+  actionRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 16,
+  },
+  actionText: {
+    color: '#FFFFFF',
+    fontSize: typography.sizes.xs,
+    fontWeight: typography.weights.bold,
+    marginTop: 6,
+    textAlign: 'center',
+  },
+  aiLoading: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 24,
+  },
+  aiLoadingText: {
+    fontSize: typography.sizes.md,
+    marginTop: 8,
+  },
+  bodyText: {
+    fontSize: typography.sizes.md,
+    lineHeight: 23,
+  },
+  bulletText: {
+    fontSize: typography.sizes.md,
+    lineHeight: 23,
+    marginTop: 6,
+  },
+  container: {
+    flex: 1,
+  },
+  content: {
+    padding: 18,
+    paddingBottom: 34,
+  },
+  correctOption: {
+    backgroundColor: 'rgba(16, 185, 129, 0.22)',
+    borderColor: colors.success,
+  },
+  dateText: {
+    fontSize: typography.sizes.sm,
+    fontWeight: typography.weights.medium,
+  },
+  errorBanner: {
+    alignItems: 'center',
+    backgroundColor: colors.error,
+    flexDirection: 'row',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  errorText: {
+    color: '#FFFFFF',
+    flex: 1,
+    fontSize: typography.sizes.sm,
+    fontWeight: typography.weights.medium,
+  },
+  fileName: {
+    flex: 1,
+    fontSize: typography.sizes.sm,
+    marginLeft: 6,
+  },
+  fileRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    marginTop: 16,
+  },
+  flashcard: {
+    backfaceVisibility: 'hidden',
+    borderRadius: 14,
+    borderWidth: 1,
+    height: 180,
+    justifyContent: 'center',
+    left: 0,
+    padding: 18,
+    position: 'absolute',
+    top: 0,
+    width: 240,
+  },
+  flashcardBack: {
+    position: 'absolute',
+  },
+  flashcardBackLabel: {
+    color: '#FFFFFF',
+    fontSize: typography.sizes.sm,
+    fontWeight: typography.weights.bold,
+    marginBottom: 10,
+  },
+  flashcardBackText: {
+    color: '#FFFFFF',
+    fontSize: typography.sizes.md,
+    lineHeight: 22,
+  },
+  flashcardLabel: {
+    fontSize: typography.sizes.sm,
+    fontWeight: typography.weights.bold,
+    marginBottom: 10,
+  },
+  flashcardSection: {
+    marginTop: 4,
+  },
+  flashcardText: {
+    fontSize: typography.sizes.md,
+    fontWeight: typography.weights.bold,
+    lineHeight: 23,
+  },
+  flashcardWrap: {
+    height: 180,
+    marginRight: 14,
+    marginTop: 12,
+    width: 240,
+  },
+  header: {
+    alignItems: 'center',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+  },
+  headerIconButton: {
+    alignItems: 'center',
+    height: 42,
+    justifyContent: 'center',
+    width: 42,
+  },
+  headerTitle: {
+    flex: 1,
+    fontSize: typography.sizes.lg,
+    fontWeight: typography.weights.bold,
+    textAlign: 'center',
+  },
+  infoHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  missingText: {
+    fontSize: typography.sizes.xl,
+    fontWeight: typography.weights.bold,
+    marginBottom: 18,
+  },
+  missingWrap: {
+    alignItems: 'center',
+    flex: 1,
+    justifyContent: 'center',
+    padding: 24,
+  },
+  noteContent: {
+    fontSize: typography.sizes.md,
+    lineHeight: 24,
+  },
+  openQuestion: {
+    borderTopColor: 'rgba(156, 163, 175, 0.28)',
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingTop: 14,
+    marginTop: 14,
+  },
+  optionButton: {
+    borderRadius: 10,
+    borderWidth: 1,
+    marginTop: 8,
+    padding: 12,
+  },
+  optionText: {
+    fontSize: typography.sizes.sm,
+    fontWeight: typography.weights.medium,
+  },
+  primaryButton: {
+    alignItems: 'center',
+    backgroundColor: colors.primary,
+    borderRadius: 12,
+    minHeight: 50,
+    justifyContent: 'center',
+    paddingHorizontal: 20,
+  },
+  primaryButtonText: {
+    color: '#FFFFFF',
+    fontSize: typography.sizes.md,
+    fontWeight: typography.weights.bold,
+  },
+  questionBlock: {
+    marginTop: 16,
+  },
+  questionText: {
+    fontSize: typography.sizes.md,
+    fontWeight: typography.weights.bold,
+    lineHeight: 23,
+    marginBottom: 8,
+  },
+  retryButton: {
+    borderColor: '#FFFFFF',
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  retryText: {
+    color: '#FFFFFF',
+    fontSize: typography.sizes.xs,
+    fontWeight: typography.weights.bold,
+  },
+  section: {
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    marginBottom: 16,
+    padding: 16,
+  },
+  sectionTitle: {
+    fontSize: typography.sizes.xl,
+    fontWeight: typography.weights.bold,
+    marginBottom: 12,
+  },
+  subjectPill: {
+    borderRadius: 999,
+    maxWidth: '58%',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  subjectText: {
+    color: '#FFFFFF',
+    fontSize: typography.sizes.xs,
+    fontWeight: typography.weights.bold,
+  },
+  subsectionTitle: {
+    fontSize: typography.sizes.lg,
+    fontWeight: typography.weights.bold,
+    marginTop: 18,
+  },
+  termText: {
+    fontSize: typography.sizes.md,
+    lineHeight: 23,
+    marginTop: 8,
+  },
+  trueFalseButton: {
+    alignItems: 'center',
+    borderRadius: 10,
+    borderWidth: 1,
+    flex: 1,
+    padding: 12,
+  },
+  trueFalseRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  wrongOption: {
+    backgroundColor: 'rgba(239, 68, 68, 0.2)',
+    borderColor: colors.error,
+  },
+});
