@@ -1,60 +1,38 @@
-const Anthropic = require('@anthropic-ai/sdk');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
 const express = require('express');
 
 const router = express.Router();
-const MODEL = 'claude-sonnet-4-20250514';
-const SYSTEM_PROMPT =
-  'You are an expert academic assistant. Always respond in the same language as the input text. Be concise and structured.';
+const MODEL = 'gemini-1.5-flash';
+const SYSTEM_INSTRUCTION =
+  'You are an expert academic assistant. Always respond in the same language as the input text. Be concise and structured. Always return valid JSON only, no markdown, no backticks.';
 
-function getAnthropicClient() {
-  if (!process.env.ANTHROPIC_API_KEY) {
-    const error = new Error('ANTHROPIC_API_KEY is not configured');
+function getGeminiModel() {
+  if (!process.env.GEMINI_API_KEY) {
+    const error = new Error('GEMINI_API_KEY is not configured');
     error.statusCode = 500;
     throw error;
   }
 
-  return new Anthropic({
-    apiKey: process.env.ANTHROPIC_API_KEY,
-  });
-}
+  const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-function getTextFromMessage(message) {
-  return message.content
-    .filter((block) => block.type === 'text')
-    .map((block) => block.text)
-    .join('\n')
-    .trim();
-}
-
-function parseJsonResponse(rawText) {
-  const fencedMatch = rawText.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  const jsonText = fencedMatch ? fencedMatch[1] : rawText;
-  const firstBrace = jsonText.indexOf('{');
-  const lastBrace = jsonText.lastIndexOf('}');
-
-  if (firstBrace === -1 || lastBrace === -1 || lastBrace <= firstBrace) {
-    throw new Error('Claude response did not contain valid JSON');
-  }
-
-  return JSON.parse(jsonText.slice(firstBrace, lastBrace + 1));
-}
-
-async function callClaudeForJson(prompt) {
-  const anthropic = getAnthropicClient();
-  const message = await anthropic.messages.create({
+  return genAI.getGenerativeModel({
     model: MODEL,
-    max_tokens: 3000,
-    temperature: 0.2,
-    system: SYSTEM_PROMPT,
-    messages: [
-      {
-        role: 'user',
-        content: prompt,
-      },
-    ],
+    systemInstruction: SYSTEM_INSTRUCTION,
   });
+}
 
-  return parseJsonResponse(getTextFromMessage(message));
+function parseJSON(text) {
+  const cleaned = text
+    .replace(/```json/g, '')
+    .replace(/```/g, '')
+    .trim();
+  return JSON.parse(cleaned);
+}
+
+async function callGeminiForJson(prompt) {
+  const model = getGeminiModel();
+  const result = await model.generateContent(prompt);
+  return parseJSON(result.response.text());
 }
 
 function validateTextBody(req) {
@@ -78,19 +56,14 @@ function validateTextBody(req) {
 router.post('/summarize', async (req, res, next) => {
   try {
     const { text, subject } = validateTextBody(req);
-    const summary = await callClaudeForJson(`Summarize the following ${subject} notes:
+    const summary = await callGeminiForJson(`Summarize the following ${subject} notes:
 
 ${text}
 
-Provide:
-1. A brief overview (2-3 sentences)
-2. Key concepts (bullet points, max 8)
-3. Important terms with one-line definitions (max 6)
-
-Format the response as JSON:
+Return ONLY a valid JSON object, no markdown, no backticks:
 {
-  "overview": "...",
-  "keyConcepts": ["...", "..."],
+  "overview": "2-3 sentence summary",
+  "keyConcepts": ["concept1", "concept2"],
   "importantTerms": [{"term": "...", "definition": "..."}]
 }`);
 
@@ -106,16 +79,11 @@ Format the response as JSON:
 router.post('/generate-questions', async (req, res, next) => {
   try {
     const { text, subject } = validateTextBody(req);
-    const questions = await callClaudeForJson(`Based on these ${subject} notes, generate exam questions:
+    const questions = await callGeminiForJson(`Based on these ${subject} notes, generate exam questions:
 
 ${text}
 
-Generate:
-- 3 multiple choice questions (4 options each, mark correct answer)
-- 2 true/false questions
-- 2 open-ended questions
-
-Format as JSON:
+Return ONLY a valid JSON object, no markdown, no backticks:
 {
   "multipleChoice": [
     {
@@ -130,7 +98,8 @@ Format as JSON:
   "openEnded": [
     { "question": "..." }
   ]
-}`);
+}
+Generate 3 multiple choice, 2 true/false, 2 open-ended questions.`);
 
     res.json({
       success: true,
@@ -144,18 +113,17 @@ Format as JSON:
 router.post('/generate-flashcards', async (req, res, next) => {
   try {
     const { text, subject } = validateTextBody(req);
-    const result = await callClaudeForJson(`Create flashcards from these ${subject} notes:
+    const result = await callGeminiForJson(`Create flashcards from these ${subject} notes:
 
 ${text}
 
-Generate 8-10 flashcards covering the most important concepts.
-
-Format as JSON:
+Return ONLY a valid JSON object, no markdown, no backticks:
 {
   "flashcards": [
     { "front": "...", "back": "..." }
   ]
-}`);
+}
+Generate 8-10 flashcards covering the most important concepts.`);
 
     res.json({
       success: true,

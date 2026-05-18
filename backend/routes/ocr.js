@@ -1,11 +1,9 @@
-const Anthropic = require('@anthropic-ai/sdk');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
 const express = require('express');
 const multer = require('multer');
 
 const router = express.Router();
-const MODEL = 'claude-sonnet-4-20250514';
-const SYSTEM_PROMPT =
-  'You are an OCR assistant. Extract all text from the image exactly as written. Preserve structure, bullet points, and formatting. Return only the extracted text, nothing else.';
+const MODEL = 'gemini-1.5-flash';
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -14,32 +12,35 @@ const upload = multer({
   },
 });
 
-function getAnthropicClient() {
-  if (!process.env.ANTHROPIC_API_KEY) {
-    const error = new Error('ANTHROPIC_API_KEY is not configured');
+function getGeminiModel() {
+  if (!process.env.GEMINI_API_KEY) {
+    const error = new Error('GEMINI_API_KEY is not configured');
     error.statusCode = 500;
     throw error;
   }
 
-  return new Anthropic({
-    apiKey: process.env.ANTHROPIC_API_KEY,
-  });
+  const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+  return genAI.getGenerativeModel({ model: MODEL });
 }
 
-function getTextFromMessage(message) {
-  return message.content
-    .filter((block) => block.type === 'text')
-    .map((block) => block.text)
-    .join('\n')
+function parseJSON(text) {
+  const cleaned = text
+    .replace(/```json/g, '')
+    .replace(/```/g, '')
     .trim();
+  return JSON.parse(cleaned);
 }
 
-function getImageMediaType(mimetype) {
-  if (['image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(mimetype)) {
-    return mimetype;
+function getSupportedMimeType(file) {
+  if (file.mimetype === 'application/pdf') {
+    return 'application/pdf';
   }
 
-  const error = new Error('Unsupported image type. Use JPEG, PNG, GIF, or WebP.');
+  if (file.mimetype.startsWith('image/')) {
+    return file.mimetype;
+  }
+
+  const error = new Error('Only PDF and image files are supported');
   error.statusCode = 400;
   throw error;
 }
@@ -53,65 +54,25 @@ router.post('/extract', upload.single('file'), async (req, res) => {
       });
     }
 
-    const anthropic = getAnthropicClient();
-    const base64 = req.file.buffer.toString('base64');
-    const isPdf = req.file.mimetype === 'application/pdf';
-    const isImage = req.file.mimetype.startsWith('image/');
-
-    if (!isPdf && !isImage) {
-      return res.status(400).json({
-        success: false,
-        error: 'Only PDF and image files are supported',
-      });
-    }
-
-    const content = isPdf
-      ? [
-          {
-            type: 'document',
-            source: {
-              type: 'base64',
-              media_type: 'application/pdf',
-              data: base64,
-            },
-            title: req.file.originalname || 'document.pdf',
-          },
-          {
-            type: 'text',
-            text: 'Extract all text from this document',
-          },
-        ]
-      : [
-          {
-            type: 'image',
-            source: {
-              type: 'base64',
-              media_type: getImageMediaType(req.file.mimetype),
-              data: base64,
-            },
-          },
-          {
-            type: 'text',
-            text: 'Extract all text from this image',
-          },
-        ];
-
-    const message = await anthropic.messages.create({
-      model: MODEL,
-      max_tokens: 4000,
-      temperature: 0,
-      system: SYSTEM_PROMPT,
-      messages: [
-        {
-          role: 'user',
-          content,
-        },
-      ],
-    });
+    const model = getGeminiModel();
+    const mimeType = getSupportedMimeType(req.file);
+    const filePart = {
+      inlineData: {
+        data: req.file.buffer.toString('base64'),
+        mimeType,
+      },
+    };
+    const isPdf = mimeType === 'application/pdf';
+    const result = await model.generateContent([
+      isPdf
+        ? 'Extract all text from this document exactly as written. Preserve structure and formatting. Return only the extracted text.'
+        : 'Extract all text from this image exactly as written. Preserve structure and formatting. Return only the extracted text.',
+      filePart,
+    ]);
 
     res.json({
       success: true,
-      text: getTextFromMessage(message),
+      text: result.response.text(),
     });
   } catch (error) {
     res.status(error.statusCode || 500).json({
