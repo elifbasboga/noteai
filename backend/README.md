@@ -18,4 +18,6 @@
 
 ## Free tier
 
-Uses Google Gemini 1.5 Flash — 1500 free requests/day via Google AI Studio.
+Uses Gemini 2.5 Flash for AI endpoints.
+
+PDF OCR first tries local text extraction, then falls back to Gemini for image-like PDFs.

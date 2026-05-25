@@ -1,14 +1,29 @@
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const express = require('express');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
 const multer = require('multer');
+const pdfParse = require('pdf-parse');
 
 const router = express.Router();
-const MODEL = 'gemini-1.5-flash';
+const MODEL = 'gemini-2.5-flash';
 
 const upload = multer({
-  storage: multer.memoryStorage(),
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => {
+      const uploadDir = path.join(os.tmpdir(), 'noteai-uploads');
+      fs.mkdirSync(uploadDir, { recursive: true });
+      cb(null, uploadDir);
+    },
+    filename: (req, file, cb) => {
+      const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+      const safeName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
+      cb(null, `${uniqueSuffix}-${safeName}`);
+    },
+  }),
   limits: {
-    fileSize: 10 * 1024 * 1024,
+    fileSize: 500 * 1024 * 1024,
   },
 });
 
@@ -45,6 +60,34 @@ function getSupportedMimeType(file) {
   throw error;
 }
 
+async function extractPdfText(buffer) {
+  const result = await pdfParse(buffer);
+  return (result.text || '').trim();
+}
+
+async function readUploadedFile(filePath) {
+  return fs.promises.readFile(filePath);
+}
+
+async function extractWithGemini(buffer, mimeType) {
+  const model = getGeminiModel();
+  const filePart = {
+    inlineData: {
+      data: buffer.toString('base64'),
+      mimeType,
+    },
+  };
+
+  const result = await model.generateContent([
+    mimeType === 'application/pdf'
+      ? 'Extract all text from this document exactly as written. Preserve structure and formatting. Return only the extracted text.'
+      : 'Extract all text from this image exactly as written. Preserve structure and formatting. Return only the extracted text.',
+    filePart,
+  ]);
+
+  return result.response.text().trim();
+}
+
 router.post('/extract', upload.single('file'), async (req, res) => {
   try {
     if (!req.file) {
@@ -54,27 +97,35 @@ router.post('/extract', upload.single('file'), async (req, res) => {
       });
     }
 
-    const model = getGeminiModel();
     const mimeType = getSupportedMimeType(req.file);
-    const filePart = {
-      inlineData: {
-        data: req.file.buffer.toString('base64'),
-        mimeType,
-      },
-    };
-    const isPdf = mimeType === 'application/pdf';
-    const result = await model.generateContent([
-      isPdf
-        ? 'Extract all text from this document exactly as written. Preserve structure and formatting. Return only the extracted text.'
-        : 'Extract all text from this image exactly as written. Preserve structure and formatting. Return only the extracted text.',
-      filePart,
-    ]);
+    const fileBuffer = await readUploadedFile(req.file.path);
+    let text = '';
+
+    if (mimeType === 'application/pdf') {
+      try {
+        text = await extractPdfText(fileBuffer);
+      } catch {
+        text = '';
+      }
+
+      if (!text) {
+        text = await extractWithGemini(fileBuffer, mimeType);
+      }
+    } else {
+      text = await extractWithGemini(fileBuffer, mimeType);
+    }
+
+    fs.promises.unlink(req.file.path).catch(() => {});
 
     res.json({
       success: true,
-      text: result.response.text(),
+      text,
     });
   } catch (error) {
+    if (req.file?.path) {
+      fs.promises.unlink(req.file.path).catch(() => {});
+    }
+
     res.status(error.statusCode || 500).json({
       success: false,
       error: error.message || 'OCR extraction failed',

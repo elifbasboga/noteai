@@ -2,7 +2,7 @@ const { GoogleGenerativeAI } = require('@google/generative-ai');
 const express = require('express');
 
 const router = express.Router();
-const MODEL = 'gemini-1.5-flash';
+const MODEL = 'gemini-2.5-flash';
 const SYSTEM_INSTRUCTION =
   'You are an expert academic assistant. Always respond in the same language as the input text. Be concise and structured. Always return valid JSON only, no markdown, no backticks.';
 

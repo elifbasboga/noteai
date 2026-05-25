@@ -1,5 +1,6 @@
-const BASE_URL = 'http://localhost:3000/api';
-const REQUEST_TIMEOUT_MS = 30000;
+const BASE_URL = 'http://192.168.1.105:3000/api';
+const DEFAULT_REQUEST_TIMEOUT_MS = 60000;
+const OCR_REQUEST_TIMEOUT_MS = 300000;
 
 function getFileName(fileUri, fileType) {
   const cleanUri = fileUri.split('?')[0];
@@ -35,8 +36,9 @@ function getMimeType(fileUri, fileType) {
 }
 
 async function request(path, options = {}) {
+  const timeoutMs = options.timeoutMs || DEFAULT_REQUEST_TIMEOUT_MS;
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     const response = await fetch(`${BASE_URL}${path}`, {
@@ -74,6 +76,7 @@ export const ApiService = {
     const data = await request('/ocr/extract', {
       method: 'POST',
       body: formData,
+      timeoutMs: OCR_REQUEST_TIMEOUT_MS,
     });
 
     return data.text;

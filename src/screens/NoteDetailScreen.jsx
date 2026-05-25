@@ -18,6 +18,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAI } from '../hooks/useAI';
+import { ApiService } from '../services/api';
 import { useNotesStore } from '../store/useNotesStore';
 import { colors, getThemeColors } from '../theme/colors';
 import { typography } from '../theme/typography';
@@ -260,49 +261,74 @@ export default function NoteDetailScreen({ navigation, route }) {
     );
   }
 
-  const hasText = note.content?.trim().length > 0;
   const isBusy = Boolean(activeAction);
   const visibleError = localError || error;
 
-  async function runAIAction(actionName) {
-    if (!hasText) {
-      setLocalError('AI işlemleri için önce not içeriği eklemelisin.');
-      return;
+  async function getSourceTextForAI() {
+    const existingText = note.content?.trim();
+
+    if (existingText) {
+      return existingText;
     }
 
+    if (note.fileType === 'pdf' && note.fileUri) {
+      const extractedText = await ApiService.extractText(note.fileUri, 'pdf');
+      const normalizedText = extractedText?.trim();
+
+      if (normalizedText) {
+        updateNote(note.id, { content: normalizedText });
+        return normalizedText;
+      }
+
+      throw new Error('PDF içeriği okunamadı. Lütfen metin içeren bir PDF yükle.');
+    }
+
+    throw new Error('AI işlemleri için önce not içeriği eklemelisin.');
+  }
+
+  async function runAIAction(actionName) {
     setLocalError(null);
     setLastAction(actionName);
     setActiveAction(actionName);
 
-    if (actionName === 'summary') {
-      const summary = await summarize(note.content, note.subject || 'Genel');
+    try {
+      const sourceText = await getSourceTextForAI();
 
-      if (summary) {
-        updateNote(note.id, { summary });
+      if (actionName === 'summary') {
+        const summary = await summarize(sourceText, note.subject || 'Genel');
+
+        if (summary) {
+          updateNote(note.id, { summary });
+        }
       }
-    }
 
-    if (actionName === 'questions') {
-      const questions = await generateQuestions(note.content, note.subject || 'Genel');
+      if (actionName === 'questions') {
+        const questions = await generateQuestions(
+          sourceText,
+          note.subject || 'Genel'
+        );
 
-      if (questions) {
-        updateNote(note.id, { questions });
-        setSelectedAnswers({});
+        if (questions) {
+          updateNote(note.id, { questions });
+          setSelectedAnswers({});
+        }
       }
-    }
 
-    if (actionName === 'flashcards') {
-      const flashcards = await generateFlashcards(
-        note.content,
-        note.subject || 'Genel'
-      );
+      if (actionName === 'flashcards') {
+        const flashcards = await generateFlashcards(
+          sourceText,
+          note.subject || 'Genel'
+        );
 
-      if (flashcards) {
-        updateNote(note.id, { flashcards });
+        if (flashcards) {
+          updateNote(note.id, { flashcards });
+        }
       }
+    } catch (actionError) {
+      setLocalError(actionError.message || 'AI işlemi başarısız oldu.');
+    } finally {
+      setActiveAction(null);
     }
-
-    setActiveAction(null);
   }
 
   function retryLastAction() {
