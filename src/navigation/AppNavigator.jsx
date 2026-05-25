@@ -5,6 +5,7 @@ import * as SecureStore from 'expo-secure-store';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, View, useColorScheme } from 'react-native';
 
+import CalendarScreen from '../screens/CalendarScreen';
 import HomeScreen from '../screens/HomeScreen';
 import SplashScreen from '../screens/onboarding/SplashScreen';
 import WelcomeScreen from '../screens/onboarding/WelcomeScreen';
@@ -12,6 +13,8 @@ import ProfileSetupScreen from '../screens/onboarding/ProfileSetupScreen';
 import NoteDetailScreen from '../screens/NoteDetailScreen';
 import NotesScreen from '../screens/NotesScreen';
 import ProfileScreen from '../screens/ProfileScreen';
+import FlashcardReviewScreen from '../screens/FlashcardReviewScreen';
+import QuizScreen from '../screens/QuizScreen';
 import StudyScreen from '../screens/StudyScreen';
 import { colors, getThemeColors } from '../theme/colors';
 import { typography } from '../theme/typography';
@@ -74,13 +77,21 @@ function MainTabs() {
         },
       })}
     >
-      <Tab.Screen name="Home" component={HomeScreen} />
+      <Tab.Screen
+        name="Home"
+        component={HomeScreen}
+        options={{ headerShown: false }}
+      />
       <Tab.Screen
         name="Notes"
         component={NotesScreen}
         options={{ headerShown: false }}
       />
-      <Tab.Screen name="Study" component={StudyScreen} />
+      <Tab.Screen
+        name="Study"
+        component={StudyScreen}
+        options={{ headerShown: false }}
+      />
       <Tab.Screen name="Profile" component={ProfileScreen} />
     </Tab.Navigator>
   );
@@ -144,6 +155,12 @@ export default function AppNavigator() {
         <>
           <Stack.Screen name="Main" component={MainTabs} />
           <Stack.Screen name="NoteDetail" component={NoteDetailScreen} />
+          <Stack.Screen name="Calendar" component={CalendarScreen} />
+          <Stack.Screen
+            name="FlashcardReview"
+            component={FlashcardReviewScreen}
+          />
+          <Stack.Screen name="Quiz" component={QuizScreen} />
         </>
       ) : (
         <>
