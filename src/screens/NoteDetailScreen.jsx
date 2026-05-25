@@ -1,10 +1,15 @@
 import { Ionicons } from '@expo/vector-icons';
+import * as Print from 'expo-print';
+import * as Sharing from 'expo-sharing';
 import { useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Animated,
+  Modal,
   Pressable,
   ScrollView,
+  Share,
   StyleSheet,
   Text,
   View,
@@ -31,6 +36,119 @@ function formatCreatedDate(value) {
     month: 'long',
     year: 'numeric',
   }).format(date);
+}
+
+function escapeHtml(value = '') {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+function buildSummaryText(note) {
+  const concepts = note.summary.keyConcepts || [];
+  const terms = note.summary.importantTerms || [];
+
+  return `📚 ${note.title} — ${note.subject || 'Genel'}
+
+ÖZET
+${note.summary.overview}
+
+ANAHTAR KAVRAMLAR
+${concepts.map((concept) => `• ${concept}`).join('\n')}
+
+ÖNEMLİ TERİMLER
+${terms.map((item) => `• ${item.term}: ${item.definition}`).join('\n')}
+
+NoteAI ile oluşturuldu`;
+}
+
+function buildFlashcardsText(note) {
+  return `🃏 ${note.subject || 'Genel'} Flashcardları
+
+${note.flashcards
+  .map((card, index) => `${index + 1}. S: ${card.front}
+   C: ${card.back}`)
+  .join('\n\n')}
+
+NoteAI ile oluşturuldu`;
+}
+
+function buildNoteHtml(note) {
+  const createdDate = formatCreatedDate(note.createdAt);
+  const concepts = note.summary?.keyConcepts || [];
+  const terms = note.summary?.importantTerms || [];
+  const flashcards = note.flashcards || [];
+
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { font-family: -apple-system, sans-serif; padding: 40px; color: #111; }
+    h1 { color: #7C3AED; font-size: 24px; margin-bottom: 4px; }
+    .subject { color: #6B7280; font-size: 14px; margin-bottom: 24px; }
+    .date { color: #9CA3AF; font-size: 12px; }
+    h2 { color: #7C3AED; font-size: 16px; margin-top: 24px; border-bottom: 1px solid #E5E7EB; padding-bottom: 8px; }
+    .content { font-size: 14px; line-height: 1.6; white-space: pre-wrap; }
+    ul { padding-left: 20px; }
+    li { margin: 4px 0; font-size: 14px; }
+    .term { font-weight: bold; }
+    .qa { margin-bottom: 14px; }
+    .footer { margin-top: 40px; color: #9CA3AF; font-size: 11px; text-align: center; }
+  </style>
+</head>
+<body>
+  <h1>${escapeHtml(note.title)}</h1>
+  <div class="subject">${escapeHtml(note.subject || 'Genel')}</div>
+  <div class="date">${escapeHtml(createdDate)}</div>
+
+  ${
+    note.content
+      ? `<h2>Not İçeriği</h2>
+  <div class="content">${escapeHtml(note.content)}</div>`
+      : ''
+  }
+
+  ${
+    note.summary
+      ? `<h2>Özet</h2>
+  <p>${escapeHtml(note.summary.overview || '')}</p>
+
+  <h2>Anahtar Kavramlar</h2>
+  <ul>${concepts.map((concept) => `<li>${escapeHtml(concept)}</li>`).join('')}</ul>
+
+  <h2>Önemli Terimler</h2>
+  ${terms
+    .map(
+      (item) =>
+        `<p><span class="term">${escapeHtml(item.term)}:</span> ${escapeHtml(
+          item.definition
+        )}</p>`
+    )
+    .join('')}`
+      : ''
+  }
+
+  ${
+    flashcards.length > 0
+      ? `<h2>Flashcardlar (${flashcards.length})</h2>
+  ${flashcards
+    .map(
+      (card, index) => `<div class="qa">
+    <p><span class="term">${index + 1}. S:</span> ${escapeHtml(card.front)}</p>
+    <p><span class="term">C:</span> ${escapeHtml(card.back)}</p>
+  </div>`
+    )
+    .join('')}`
+      : ''
+  }
+
+  <div class="footer">NoteAI ile oluşturuldu • ${escapeHtml(createdDate)}</div>
+</body>
+</html>`;
 }
 
 function Flashcard({ card, index, themeColors }) {
@@ -111,6 +229,8 @@ export default function NoteDetailScreen({ navigation, route }) {
   const [localError, setLocalError] = useState(null);
   const [lastAction, setLastAction] = useState(null);
   const [selectedAnswers, setSelectedAnswers] = useState({});
+  const [shareSheetVisible, setShareSheetVisible] = useState(false);
+  const [exportingPdf, setExportingPdf] = useState(false);
 
   const subjectColor = useMemo(() => {
     if (!note?.subject) {
@@ -241,6 +361,60 @@ export default function NoteDetailScreen({ navigation, route }) {
     return {};
   }
 
+  async function shareSummary() {
+    if (!note.summary) {
+      Alert.alert('Önce özet oluştur');
+      return;
+    }
+
+    try {
+      await Share.share({ message: buildSummaryText(note) });
+      setShareSheetVisible(false);
+    } catch (shareError) {
+      Alert.alert('Paylaşım başarısız', shareError.message || 'Lütfen tekrar dene.');
+    }
+  }
+
+  async function exportPdf() {
+    setExportingPdf(true);
+
+    try {
+      const { uri } = await Print.printToFileAsync({
+        html: buildNoteHtml(note),
+      });
+      const canShare = await Sharing.isAvailableAsync();
+
+      if (!canShare) {
+        Alert.alert('Paylaşım kullanılamıyor', 'Bu cihazda dosya paylaşımı desteklenmiyor.');
+        return;
+      }
+
+      await Sharing.shareAsync(uri);
+      setShareSheetVisible(false);
+    } catch (exportError) {
+      Alert.alert(
+        'PDF oluşturulamadı',
+        exportError.message || 'Lütfen tekrar dene.'
+      );
+    } finally {
+      setExportingPdf(false);
+    }
+  }
+
+  async function shareFlashcards() {
+    if (!note.flashcards?.length) {
+      Alert.alert('Önce flashcard oluştur');
+      return;
+    }
+
+    try {
+      await Share.share({ message: buildFlashcardsText(note) });
+      setShareSheetVisible(false);
+    } catch (shareError) {
+      Alert.alert('Paylaşım başarısız', shareError.message || 'Lütfen tekrar dene.');
+    }
+  }
+
   return (
     <SafeAreaView
       style={[styles.container, { backgroundColor: themeColors.background }]}
@@ -255,7 +429,10 @@ export default function NoteDetailScreen({ navigation, route }) {
         >
           {note.title}
         </Text>
-        <Pressable style={styles.headerIconButton}>
+        <Pressable
+          onPress={() => setShareSheetVisible(true)}
+          style={styles.headerIconButton}
+        >
           <Ionicons
             name="ellipsis-horizontal"
             size={24}
@@ -528,6 +705,87 @@ export default function NoteDetailScreen({ navigation, route }) {
           </View>
         ) : null}
       </ScrollView>
+
+      <Modal
+        animationType="slide"
+        onRequestClose={() => setShareSheetVisible(false)}
+        transparent
+        visible={shareSheetVisible}
+      >
+        <Pressable
+          style={styles.sheetOverlay}
+          onPress={() => setShareSheetVisible(false)}
+        >
+          <Pressable
+            style={[
+              styles.shareSheet,
+              { backgroundColor: themeColors.surface },
+            ]}
+          >
+            <View style={styles.sheetHandle} />
+            <Text style={[styles.sheetTitle, { color: themeColors.textPrimary }]}>
+              Paylaş ve Dışa Aktar
+            </Text>
+
+            <Pressable
+              onPress={shareSummary}
+              style={({ pressed }) => [
+                styles.sheetOption,
+                { borderColor: themeColors.border },
+                pressed && styles.sheetPressed,
+              ]}
+            >
+              <Ionicons name="share-social-outline" size={22} color={colors.primary} />
+              <Text style={[styles.sheetOptionText, { color: themeColors.textPrimary }]}>
+                Özeti Paylaş
+              </Text>
+            </Pressable>
+
+            <Pressable
+              disabled={exportingPdf}
+              onPress={exportPdf}
+              style={({ pressed }) => [
+                styles.sheetOption,
+                { borderColor: themeColors.border },
+                (pressed || exportingPdf) && styles.sheetPressed,
+              ]}
+            >
+              {exportingPdf ? (
+                <ActivityIndicator color={colors.primary} size="small" />
+              ) : (
+                <Ionicons name="document-outline" size={22} color={colors.primary} />
+              )}
+              <Text style={[styles.sheetOptionText, { color: themeColors.textPrimary }]}>
+                {exportingPdf ? 'PDF hazırlanıyor...' : 'PDF Olarak Dışa Aktar'}
+              </Text>
+            </Pressable>
+
+            <Pressable
+              onPress={shareFlashcards}
+              style={({ pressed }) => [
+                styles.sheetOption,
+                { borderColor: themeColors.border },
+                pressed && styles.sheetPressed,
+              ]}
+            >
+              <Ionicons name="albums-outline" size={22} color={colors.primary} />
+              <Text style={[styles.sheetOptionText, { color: themeColors.textPrimary }]}>
+                Flashcardları Paylaş
+              </Text>
+            </Pressable>
+
+            <Pressable
+              onPress={() => setShareSheetVisible(false)}
+              style={({ pressed }) => [
+                styles.sheetClose,
+                pressed && styles.sheetPressed,
+              ]}
+            >
+              <Text style={styles.sheetCloseText}>Kapat</Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -757,6 +1015,58 @@ const styles = StyleSheet.create({
     fontSize: typography.sizes.xl,
     fontWeight: typography.weights.bold,
     marginBottom: 12,
+  },
+  shareSheet: {
+    borderTopLeftRadius: 22,
+    borderTopRightRadius: 22,
+    padding: 18,
+    paddingBottom: 30,
+  },
+  sheetClose: {
+    alignItems: 'center',
+    backgroundColor: colors.primary,
+    borderRadius: 12,
+    justifyContent: 'center',
+    marginTop: 14,
+    minHeight: 50,
+  },
+  sheetCloseText: {
+    color: '#FFFFFF',
+    fontSize: typography.sizes.md,
+    fontWeight: typography.weights.bold,
+  },
+  sheetHandle: {
+    alignSelf: 'center',
+    backgroundColor: '#9CA3AF',
+    borderRadius: 999,
+    height: 4,
+    marginBottom: 16,
+    opacity: 0.6,
+    width: 44,
+  },
+  sheetOption: {
+    alignItems: 'center',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    minHeight: 56,
+  },
+  sheetOptionText: {
+    fontSize: typography.sizes.md,
+    fontWeight: typography.weights.bold,
+    marginLeft: 12,
+  },
+  sheetOverlay: {
+    backgroundColor: 'rgba(0, 0, 0, 0.35)',
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  sheetPressed: {
+    opacity: 0.75,
+  },
+  sheetTitle: {
+    fontSize: typography.sizes.lg,
+    fontWeight: typography.weights.bold,
+    marginBottom: 8,
   },
   subjectPill: {
     borderRadius: 999,

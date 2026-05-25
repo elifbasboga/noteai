@@ -1,11 +1,15 @@
 import { create } from 'zustand';
 
-export const useNotesStore = create((set) => ({
+const initialState = {
   notes: [],
   cardProgress: {},
   exams: [],
   profile: { name: '', university: '', department: '' },
   quizResults: [],
+};
+
+export const useNotesStore = create((set) => ({
+  ...initialState,
   addNote: (note) =>
     set((state) => ({
       notes: [note, ...state.notes],
@@ -84,6 +88,8 @@ export const useNotesStore = create((set) => ({
     set((state) => ({
       quizResults: [result, ...state.quizResults].slice(0, 50),
     })),
+  clearQuizResults: () => set({ quizResults: [] }),
   setProfile: (profile) => set({ profile }),
   clearNotes: () => set({ notes: [] }),
+  resetStore: () => set(initialState),
 }));
