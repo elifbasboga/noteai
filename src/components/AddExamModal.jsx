@@ -11,12 +11,12 @@ import {
   Text,
   TextInput,
   View,
-  useColorScheme,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { useAppTheme } from '../hooks/useAppTheme';
 import { NotificationService } from '../services/notificationService';
-import { useNotesStore } from '../store/useNotesStore';
+import useNotesStore from '../store/useNotesStore';
 import { colors, getThemeColors } from '../theme/colors';
 import { typography } from '../theme/typography';
 
@@ -43,7 +43,7 @@ function getSubjectColor(subject) {
 }
 
 export default function AddExamModal({ visible, onClose }) {
-  const colorScheme = useColorScheme();
+  const colorScheme = useAppTheme();
   const themeColors = getThemeColors(colorScheme);
   const addExam = useNotesStore((state) => state.addExam);
   const [title, setTitle] = useState('');

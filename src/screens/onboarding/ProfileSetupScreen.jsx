@@ -7,16 +7,16 @@ import {
   Text,
   TextInput,
   View,
-  useColorScheme,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { useNotesStore } from '../../store/useNotesStore';
+import { useAppTheme } from '../../hooks/useAppTheme';
+import useNotesStore from '../../store/useNotesStore';
 import { colors, getThemeColors } from '../../theme/colors';
 import { typography } from '../../theme/typography';
 
 export default function ProfileSetupScreen({ onOnboardingComplete }) {
-  const colorScheme = useColorScheme();
+  const colorScheme = useAppTheme();
   const themeColors = getThemeColors(colorScheme);
   const setProfile = useNotesStore((state) => state.setProfile);
   const [name, setName] = useState('');

@@ -16,12 +16,12 @@ import {
   Text,
   TextInput,
   View,
-  useColorScheme,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { useAppTheme } from '../hooks/useAppTheme';
 import { useAI } from '../hooks/useAI';
-import { useNotesStore } from '../store/useNotesStore';
+import useNotesStore from '../store/useNotesStore';
 import { colors, getThemeColors } from '../theme/colors';
 import { typography } from '../theme/typography';
 
@@ -36,7 +36,7 @@ function getNameFromUri(uri, fallback) {
 }
 
 export default function CreateNoteModal({ visible, onClose }) {
-  const colorScheme = useColorScheme();
+  const colorScheme = useAppTheme();
   const themeColors = getThemeColors(colorScheme);
   const addNote = useNotesStore((state) => state.addNote);
   const { loading: ocrLoading, error: ocrError, extractText } = useAI();

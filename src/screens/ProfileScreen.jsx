@@ -8,14 +8,14 @@ import {
   StyleSheet,
   Text,
   View,
-  useColorScheme,
 } from 'react-native';
 import { BarChart } from 'react-native-chart-kit';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { useAppTheme } from '../hooks/useAppTheme';
 import EditProfileModal from '../components/EditProfileModal';
 import { NotificationService } from '../services/notificationService';
-import { useNotesStore } from '../store/useNotesStore';
+import useNotesStore from '../store/useNotesStore';
 import { colors, getThemeColors } from '../theme/colors';
 import { typography } from '../theme/typography';
 
@@ -82,13 +82,15 @@ function getBadgeColor(percentage) {
 }
 
 export default function ProfileScreen() {
-  const colorScheme = useColorScheme();
+  const colorScheme = useAppTheme();
   const themeColors = getThemeColors(colorScheme);
   const notes = useNotesStore((state) => state.notes);
   const profile = useNotesStore((state) => state.profile);
   const quizResults = useNotesStore((state) => state.quizResults);
   const clearQuizResults = useNotesStore((state) => state.clearQuizResults);
   const resetStore = useNotesStore((state) => state.resetStore);
+  const themeMode = useNotesStore((state) => state.themeMode);
+  const setThemeMode = useNotesStore((state) => state.setThemeMode);
   const [editVisible, setEditVisible] = useState(false);
   const totalFlashcards = notes.reduce(
     (total, note) => total + (note.flashcards?.length || 0),
@@ -430,10 +432,10 @@ export default function ProfileScreen() {
             },
           ]}
         >
-          <SettingsRow
-            label="Tema"
-            value="Sistem"
+          <ThemeSelector
+            setThemeMode={setThemeMode}
             themeColors={themeColors}
+            themeMode={themeMode}
           />
           <SettingsRow
             danger
@@ -501,6 +503,49 @@ function SettingsRow({ danger, label, onPress, value, themeColors }) {
         />
       )}
     </Pressable>
+  );
+}
+
+function ThemeSelector({ setThemeMode, themeColors, themeMode }) {
+  const options = [
+    { label: 'Sistem', value: 'system' },
+    { label: 'Açık', value: 'light' },
+    { label: 'Koyu', value: 'dark' },
+  ];
+
+  return (
+    <View style={styles.themeSelectorRow}>
+      <Text style={[styles.settingsLabel, { color: themeColors.textPrimary }]}>Tema</Text>
+      <View style={[styles.segmentedWrap, { borderColor: themeColors.border }]}>
+        {options.map((option) => {
+          const selected = themeMode === option.value;
+
+          return (
+            <Pressable
+              key={option.value}
+              onPress={() => setThemeMode(option.value)}
+              style={({ pressed }) => [
+                styles.segmentButton,
+                {
+                  backgroundColor: selected ? colors.primary : themeColors.surface,
+                  borderColor: selected ? colors.primary : themeColors.border,
+                },
+                pressed && styles.pressed,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.segmentButtonText,
+                  { color: selected ? '#FFFFFF' : themeColors.textSecondary },
+                ]}
+              >
+                {option.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
   );
 }
 
@@ -658,11 +703,34 @@ const styles = StyleSheet.create({
     fontSize: typography.sizes.md,
     fontWeight: typography.weights.medium,
   },
+  segmentedWrap: {
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    overflow: 'hidden',
+  },
   settingsRow: {
     alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'space-between',
     minHeight: 46,
+  },
+  segmentButton: {
+    alignItems: 'center',
+    borderRightWidth: StyleSheet.hairlineWidth,
+    flex: 1,
+    justifyContent: 'center',
+    minHeight: 38,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  segmentButtonText: {
+    fontSize: typography.sizes.sm,
+    fontWeight: typography.weights.bold,
+  },
+  themeSelectorRow: {
+    gap: 10,
+    marginBottom: 12,
   },
   settingsValue: {
     fontSize: typography.sizes.sm,

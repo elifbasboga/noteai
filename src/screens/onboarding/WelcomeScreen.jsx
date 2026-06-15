@@ -7,10 +7,10 @@ import {
   StyleSheet,
   Text,
   View,
-  useColorScheme,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { useAppTheme } from '../../hooks/useAppTheme';
 import { colors, getThemeColors } from '../../theme/colors';
 import { typography } from '../../theme/typography';
 
@@ -38,7 +38,7 @@ const slides = [
 ];
 
 export default function WelcomeScreen({ navigation }) {
-  const colorScheme = useColorScheme();
+  const colorScheme = useAppTheme();
   const themeColors = getThemeColors(colorScheme);
   const [activeIndex, setActiveIndex] = useState(0);
   const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 60 }).current;

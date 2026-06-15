@@ -7,13 +7,13 @@ import {
   StyleSheet,
   Text,
   View,
-  useColorScheme,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { useAppTheme } from '../hooks/useAppTheme';
 import AddExamModal from '../components/AddExamModal';
 import { NotificationService } from '../services/notificationService';
-import { useNotesStore } from '../store/useNotesStore';
+import useNotesStore from '../store/useNotesStore';
 import { colors, getThemeColors } from '../theme/colors';
 import { typography } from '../theme/typography';
 
@@ -42,7 +42,7 @@ function formatShortMonth(dateValue) {
 }
 
 export default function CalendarScreen({ navigation }) {
-  const colorScheme = useColorScheme();
+  const colorScheme = useAppTheme();
   const themeColors = getThemeColors(colorScheme);
   const exams = useNotesStore((state) => state.exams);
   const deleteExam = useNotesStore((state) => state.deleteExam);

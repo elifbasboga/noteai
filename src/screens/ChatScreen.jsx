@@ -11,12 +11,12 @@ import {
   Text,
   TextInput,
   View,
-  useColorScheme,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { useAppTheme } from '../hooks/useAppTheme';
 import { useAI } from '../hooks/useAI';
-import { useNotesStore } from '../store/useNotesStore';
+import useNotesStore from '../store/useNotesStore';
 import { colors, getThemeColors } from '../theme/colors';
 import { typography } from '../theme/typography';
 
@@ -74,7 +74,7 @@ function TypingDots() {
 }
 
 export default function ChatScreen({ navigation, route }) {
-  const colorScheme = useColorScheme();
+  const colorScheme = useAppTheme();
   const themeColors = getThemeColors(colorScheme);
   const noteId = route.params?.noteId;
   const note = useNotesStore((state) =>

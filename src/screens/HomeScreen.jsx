@@ -5,11 +5,11 @@ import {
   StyleSheet,
   Text,
   View,
-  useColorScheme,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { useNotesStore } from '../store/useNotesStore';
+import { useAppTheme } from '../hooks/useAppTheme';
+import useNotesStore from '../store/useNotesStore';
 import { colors, getThemeColors } from '../theme/colors';
 import { typography } from '../theme/typography';
 
@@ -88,7 +88,7 @@ function isReviewedToday(progress) {
 }
 
 export default function HomeScreen({ navigation }) {
-  const colorScheme = useColorScheme();
+  const colorScheme = useAppTheme();
   const themeColors = getThemeColors(colorScheme);
   const notes = useNotesStore((state) => state.notes);
   const profile = useNotesStore((state) => state.profile);

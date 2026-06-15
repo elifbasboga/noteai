@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -16,17 +16,18 @@ import {
   Text,
   UIManager,
   View,
-  useColorScheme,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { useAppTheme } from '../hooks/useAppTheme';
 import { useAI } from '../hooks/useAI';
 import { ApiService } from '../services/api';
-import { useNotesStore } from '../store/useNotesStore';
+import useNotesStore from '../store/useNotesStore';
 import { colors, getThemeColors } from '../theme/colors';
 import { typography } from '../theme/typography';
 
 const subjectColors = ['#7C3AED', '#0F6E56', '#854F0B', '#993556', '#185FA5'];
+const conceptColors = ['#7C3AED', '#0F6E56', '#854F0B', '#993556', '#185FA5'];
 const questionTypeOptions = [
   {
     value: 'multipleChoice',
@@ -55,6 +56,16 @@ if (
   UIManager.setLayoutAnimationEnabledExperimental
 ) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
+}
+
+function withOpacity(hexColor, opacity) {
+  const normalized = hexColor.replace('#', '');
+  const numeric = Number.parseInt(normalized, 16);
+  const red = (numeric >> 16) & 255;
+  const green = (numeric >> 8) & 255;
+  const blue = numeric & 255;
+
+  return `rgba(${red}, ${green}, ${blue}, ${opacity})`;
 }
 
 function formatCreatedDate(value) {
@@ -244,8 +255,58 @@ function Flashcard({ card, index, themeColors }) {
   );
 }
 
+function ImportantTermItem({ isExpanded, item, onToggle, themeColors, isLast }) {
+  const rotation = useRef(new Animated.Value(isExpanded ? 1 : 0)).current;
+
+  useEffect(() => {
+    Animated.timing(rotation, {
+      toValue: isExpanded ? 1 : 0,
+      duration: 180,
+      useNativeDriver: true,
+    }).start();
+  }, [isExpanded, rotation]);
+
+  const chevronRotate = rotation.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '180deg'],
+  });
+
+  return (
+    <View
+      style={[
+        styles.termItem,
+        !isLast && {
+          borderBottomColor: themeColors.border,
+          borderBottomWidth: StyleSheet.hairlineWidth,
+        },
+      ]}
+    >
+      <Pressable onPress={onToggle} style={styles.termHeader}>
+        <Text style={[styles.termTitle, { color: themeColors.textPrimary }]}>
+          {item.term}
+        </Text>
+        <Animated.View style={{ transform: [{ rotate: chevronRotate }] }}>
+          <Ionicons
+            name="chevron-down"
+            size={18}
+            color={themeColors.textSecondary}
+          />
+        </Animated.View>
+      </Pressable>
+
+      {isExpanded ? (
+        <View style={styles.termDefinitionWrap}>
+          <Text style={[styles.termDefinition, { color: themeColors.textSecondary }]}>
+            {item.definition}
+          </Text>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
 export default function NoteDetailScreen({ navigation, route }) {
-  const colorScheme = useColorScheme();
+  const colorScheme = useAppTheme();
   const themeColors = getThemeColors(colorScheme);
   const noteId = route.params?.noteId;
   const note = useNotesStore((state) =>
@@ -267,6 +328,9 @@ export default function NoteDetailScreen({ navigation, route }) {
   const [isContentExpanded, setIsContentExpanded] = useState(false);
   const [questionTypeSheetVisible, setQuestionTypeSheetVisible] = useState(false);
   const [selectedQuestionType, setSelectedQuestionType] = useState('mixed');
+  const [expandedTerms, setExpandedTerms] = useState({});
+  const summaryConcepts = note?.summary?.keyConcepts || [];
+  const importantTerms = note?.summary?.importantTerms || [];
 
   const subjectColor = useMemo(() => {
     if (!note?.subject) {
@@ -487,6 +551,14 @@ export default function NoteDetailScreen({ navigation, route }) {
     }
   }
 
+  function toggleTerm(termKey) {
+    LayoutAnimation.easeInEaseOut();
+    setExpandedTerms((current) => ({
+      ...current,
+      [termKey]: !current[termKey],
+    }));
+  }
+
   return (
     <SafeAreaView
       style={[styles.container, { backgroundColor: themeColors.background }]}
@@ -641,48 +713,86 @@ export default function NoteDetailScreen({ navigation, route }) {
         ) : null}
 
         {note.summary ? (
-          <View
-            style={[
-              styles.section,
-              {
-                backgroundColor: themeColors.surface,
-                borderColor: themeColors.border,
-              },
-            ]}
-          >
-            <Text style={[styles.sectionTitle, { color: themeColors.textPrimary }]}>
-              Özet
-            </Text>
-            <Text style={[styles.bodyText, { color: themeColors.textPrimary }]}>
-              {note.summary.overview}
-            </Text>
-
-            <Text style={[styles.subsectionTitle, { color: themeColors.textPrimary }]}>
-              Anahtar Kavramlar
-            </Text>
-            {note.summary.keyConcepts?.map((concept) => (
-              <Text
-                key={concept}
-                style={[styles.bulletText, { color: themeColors.textSecondary }]}
-              >
-                {'\u2022'} {concept}
+          <View style={styles.summaryBlock}>
+            <View
+              style={[
+                styles.overviewCard,
+                {
+                  backgroundColor: colorScheme === 'dark' ? '#2A2150' : '#F5F3FF',
+                  borderColor: themeColors.border,
+                },
+              ]}
+            >
+              <Ionicons
+                name="sparkles"
+                size={18}
+                color={colors.primary}
+                style={styles.summaryCardIcon}
+              />
+              <Text style={[styles.summaryEyebrow, { color: themeColors.textSecondary }]}> 
+                GENEL BAKIŞ
               </Text>
-            ))}
-
-            <Text style={[styles.subsectionTitle, { color: themeColors.textPrimary }]}>
-              Önemli Terimler
-            </Text>
-            {note.summary.importantTerms?.map((item) => (
-              <Text
-                key={`${item.term}-${item.definition}`}
-                style={[styles.termText, { color: themeColors.textSecondary }]}
-              >
-                <Text style={{ color: themeColors.textPrimary, fontWeight: '700' }}>
-                  {item.term}:
-                </Text>{' '}
-                {item.definition}
+              <Text style={[styles.summaryOverview, { color: themeColors.textPrimary }]}> 
+                {note.summary.overview}
               </Text>
-            ))}
+            </View>
+
+            <View style={styles.summarySectionSpacing}>
+              <View style={styles.sectionTitleRow}>
+                <Ionicons name="key" size={16} color={colors.primary} />
+                <Text style={[styles.sectionTitleText, { color: themeColors.textPrimary }]}> 
+                  Anahtar Kavramlar
+                </Text>
+              </View>
+              <View style={styles.conceptWrap}>
+                {summaryConcepts.map((concept, index) => {
+                  const chipColor = conceptColors[index % conceptColors.length];
+
+                  return (
+                    <View
+                      key={`${concept}-${index}`}
+                      style={[
+                        styles.conceptChip,
+                        {
+                          backgroundColor: withOpacity(chipColor, 0.15),
+                          borderColor: chipColor,
+                        },
+                      ]}
+                    >
+                      <Text style={[styles.conceptChipText, { color: chipColor }]}>
+                        {concept}
+                      </Text>
+                    </View>
+                  );
+                })}
+              </View>
+            </View>
+
+            <View style={styles.summarySectionSpacing}>
+              <View style={styles.sectionTitleRow}>
+                <Ionicons name="book" size={16} color={colors.primary} />
+                <Text style={[styles.sectionTitleText, { color: themeColors.textPrimary }]}> 
+                  Önemli Terimler
+                </Text>
+              </View>
+              <View style={[styles.termList, { borderColor: themeColors.border }]}> 
+                {importantTerms.map((item, index) => {
+                  const termKey = `${item.term}-${index}`;
+                  const isExpanded = Boolean(expandedTerms[termKey]);
+
+                  return (
+                    <ImportantTermItem
+                      key={termKey}
+                      isExpanded={isExpanded}
+                      item={item}
+                      isLast={index === importantTerms.length - 1}
+                      onToggle={() => toggleTerm(termKey)}
+                      themeColors={themeColors}
+                    />
+                  );
+                })}
+              </View>
+            </View>
           </View>
         ) : null}
 
@@ -1029,6 +1139,22 @@ const styles = StyleSheet.create({
     lineHeight: 23,
     marginTop: 6,
   },
+  conceptChip: {
+    alignItems: 'center',
+    borderRadius: 20,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  conceptChipText: {
+    fontSize: 13,
+    fontWeight: typography.weights.bold,
+  },
+  conceptWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
   cancelSheetButton: {
     alignItems: 'center',
     borderRadius: 12,
@@ -1105,6 +1231,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     marginTop: 16,
   },
+  overviewCard: {
+    borderLeftWidth: 4,
+    borderRadius: 12,
+    padding: 16,
+  },
   flashcard: {
     backfaceVisibility: 'hidden',
     borderRadius: 14,
@@ -1149,6 +1280,12 @@ const styles = StyleSheet.create({
     marginRight: 14,
     marginTop: 12,
     width: 240,
+  },
+  sectionTitleRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 10,
   },
   header: {
     alignItems: 'center',
@@ -1271,6 +1408,10 @@ const styles = StyleSheet.create({
     fontSize: typography.sizes.md,
     fontWeight: typography.weights.bold,
   },
+  sectionTitleText: {
+    fontSize: 14,
+    fontWeight: typography.weights.bold,
+  },
   radioInner: {
     backgroundColor: colors.primary,
     borderRadius: 6,
@@ -1307,6 +1448,25 @@ const styles = StyleSheet.create({
     fontSize: typography.sizes.xl,
     fontWeight: typography.weights.bold,
     marginBottom: 12,
+  },
+  summaryBlock: {
+    gap: 16,
+  },
+  summaryCardIcon: {
+    marginBottom: 10,
+  },
+  summaryEyebrow: {
+    fontSize: 12,
+    fontWeight: typography.weights.bold,
+    letterSpacing: 0.9,
+    marginBottom: 8,
+  },
+  summaryOverview: {
+    fontSize: 15,
+    lineHeight: 22,
+  },
+  summarySectionSpacing: {
+    marginTop: 16,
   },
   shareSheet: {
     borderTopLeftRadius: 22,
@@ -1370,6 +1530,32 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: typography.sizes.xs,
     fontWeight: typography.weights.bold,
+  },
+  termDefinition: {
+    fontSize: 13,
+    lineHeight: 19,
+  },
+  termDefinitionWrap: {
+    paddingLeft: 12,
+    paddingTop: 8,
+  },
+  termHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    minHeight: 44,
+  },
+  termItem: {
+    paddingVertical: 10,
+  },
+  termList: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  termTitle: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: typography.weights.bold,
+    paddingRight: 10,
   },
   subsectionTitle: {
     fontSize: typography.sizes.lg,
