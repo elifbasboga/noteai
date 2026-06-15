@@ -22,6 +22,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppTheme } from '../hooks/useAppTheme';
 import { useAI } from '../hooks/useAI';
 import { ApiService } from '../services/api';
+import QuestionExportModal from '../components/QuestionExportModal';
 import useNotesStore from '../store/useNotesStore';
 import { colors, getThemeColors } from '../theme/colors';
 import { typography } from '../theme/typography';
@@ -66,6 +67,42 @@ function withOpacity(hexColor, opacity) {
   const blue = numeric & 255;
 
   return `rgba(${red}, ${green}, ${blue}, ${opacity})`;
+}
+
+function detectQuestionLanguage(text) {
+  const normalized = String(text || '').toLowerCase();
+  if (!normalized.trim()) {
+    return 'en';
+  }
+
+  if (/[çğıöşüÇĞİÖŞÜ]/.test(normalized)) {
+    return 'tr';
+  }
+
+  const turkishSignals = [
+    ' ve ',
+    ' bir ',
+    ' bu ',
+    ' için ',
+    ' ile ',
+    ' nasıl ',
+    ' neden ',
+    ' hangi ',
+    ' nedir ',
+  ];
+
+  if (turkishSignals.some((signal) => normalized.includes(signal))) {
+    return 'tr';
+  }
+
+  return 'en';
+}
+
+function getTrueFalseLabels(question) {
+  return {
+    true: question?.trueFalseLabels?.true || 'Doğru',
+    false: question?.trueFalseLabels?.false || 'Yanlış',
+  };
 }
 
 function formatCreatedDate(value) {
@@ -328,7 +365,11 @@ export default function NoteDetailScreen({ navigation, route }) {
   const [isContentExpanded, setIsContentExpanded] = useState(false);
   const [questionTypeSheetVisible, setQuestionTypeSheetVisible] = useState(false);
   const [selectedQuestionType, setSelectedQuestionType] = useState('mixed');
+  const [selectedQuestionLanguage, setSelectedQuestionLanguage] = useState(
+    detectQuestionLanguage(note?.content || note?.title || note?.subject || '')
+  );
   const [expandedTerms, setExpandedTerms] = useState({});
+  const [questionExportVisible, setQuestionExportVisible] = useState(false);
   const summaryConcepts = note?.summary?.keyConcepts || [];
   const importantTerms = note?.summary?.importantTerms || [];
 
@@ -385,9 +426,13 @@ export default function NoteDetailScreen({ navigation, route }) {
     throw new Error('AI işlemleri için önce not içeriği eklemelisin.');
   }
 
-  async function runAIAction(actionName, questionType = 'mixed') {
+  async function runAIAction(
+    actionName,
+    questionType = 'mixed',
+    language = selectedQuestionLanguage
+  ) {
     setLocalError(null);
-    setLastAction({ name: actionName, questionType });
+    setLastAction({ name: actionName, questionType, language });
     setActiveAction(actionName);
 
     try {
@@ -405,7 +450,8 @@ export default function NoteDetailScreen({ navigation, route }) {
         const questions = await generateQuestions(
           sourceText,
           note.subject || 'Genel',
-          questionType
+          questionType,
+          language
         );
 
         if (questions) {
@@ -433,7 +479,11 @@ export default function NoteDetailScreen({ navigation, route }) {
 
   function retryLastAction() {
     if (lastAction) {
-      runAIAction(lastAction.name, lastAction.questionType);
+      runAIAction(
+        lastAction.name,
+        lastAction.questionType,
+        lastAction.language || selectedQuestionLanguage
+      );
     }
   }
 
@@ -442,9 +492,49 @@ export default function NoteDetailScreen({ navigation, route }) {
     setIsContentExpanded((current) => !current);
   }
 
+  function openQuestionTypeSheet() {
+    setSelectedQuestionLanguage(
+      detectQuestionLanguage(note?.content || note?.title || note?.subject || '')
+    );
+    setQuestionTypeSheetVisible(true);
+  }
+
   function confirmQuestionGeneration() {
     setQuestionTypeSheetVisible(false);
-    runAIAction('questions', selectedQuestionType);
+    runAIAction('questions', selectedQuestionType, selectedQuestionLanguage);
+  }
+
+  function confirmDeleteSummary() {
+    Alert.alert('Sil', 'Bu özeti silmek istediğine emin misin?', [
+      { text: 'Vazgeç', style: 'cancel' },
+      {
+        text: 'Sil',
+        style: 'destructive',
+        onPress: () => updateNote(note.id, { summary: null }),
+      },
+    ]);
+  }
+
+  function confirmDeleteQuestions() {
+    Alert.alert('Sil', 'Bu soruları silmek istediğine emin misin?', [
+      { text: 'Vazgeç', style: 'cancel' },
+      {
+        text: 'Sil',
+        style: 'destructive',
+        onPress: () => updateNote(note.id, { questions: null }),
+      },
+    ]);
+  }
+
+  function confirmDeleteFlashcards() {
+    Alert.alert('Sil', 'Bu flashcardları silmek istediğine emin misin?', [
+      { text: 'Vazgeç', style: 'cancel' },
+      {
+        text: 'Sil',
+        style: 'destructive',
+        onPress: () => updateNote(note.id, { flashcards: [] }),
+      },
+    ]);
   }
 
   function selectAnswer(key, value) {
@@ -671,7 +761,7 @@ export default function NoteDetailScreen({ navigation, route }) {
           </Pressable>
           <Pressable
             disabled={isBusy}
-            onPress={() => setQuestionTypeSheetVisible(true)}
+            onPress={openQuestionTypeSheet}
             style={({ pressed }) => [
               styles.actionButton,
               { backgroundColor: '#185FA5' },
@@ -713,7 +803,23 @@ export default function NoteDetailScreen({ navigation, route }) {
         ) : null}
 
         {note.summary ? (
-          <View style={styles.summaryBlock}>
+          <View style={styles.summarySection}>
+            <View style={styles.sectionHeaderWithAction}>
+              <View style={styles.sectionTitleRow}>
+                <Text style={[styles.sectionTitleText, { color: themeColors.textPrimary }]}> 
+                  Özet
+                </Text>
+              </View>
+              <Pressable
+                onPress={confirmDeleteSummary}
+                hitSlop={8}
+                style={({ pressed }) => [styles.deleteIconButton, pressed && styles.sheetPressed]}
+              >
+                <Ionicons name="trash-outline" size={18} color="#EF4444" />
+              </Pressable>
+            </View>
+
+            <View style={styles.summaryBlock}>
             <View
               style={[
                 styles.overviewCard,
@@ -793,6 +899,7 @@ export default function NoteDetailScreen({ navigation, route }) {
                 })}
               </View>
             </View>
+            </View>
           </View>
         ) : null}
 
@@ -806,9 +913,18 @@ export default function NoteDetailScreen({ navigation, route }) {
               },
             ]}
           >
-            <Text style={[styles.sectionTitle, { color: themeColors.textPrimary }]}>
-              Sorular
-            </Text>
+            <View style={styles.sectionHeaderWithAction}>
+              <Text style={[styles.sectionTitle, { color: themeColors.textPrimary }]}> 
+                Sorular
+              </Text>
+              <Pressable
+                onPress={confirmDeleteQuestions}
+                hitSlop={8}
+                style={({ pressed }) => [styles.deleteIconButton, pressed && styles.sheetPressed]}
+              >
+                <Ionicons name="trash-outline" size={18} color="#EF4444" />
+              </Pressable>
+            </View>
 
             {note.questions.multipleChoice?.map((question, questionIndex) => (
               <View key={question.question} style={styles.questionBlock}>
@@ -864,7 +980,7 @@ export default function NoteDetailScreen({ navigation, route }) {
                       <Text
                         style={[styles.optionText, { color: themeColors.textPrimary }]}
                       >
-                        {value ? 'Doğru' : 'Yanlış'}
+                        {value ? getTrueFalseLabels(question).true : getTrueFalseLabels(question).false}
                       </Text>
                     </Pressable>
                   ))}
@@ -893,9 +1009,18 @@ export default function NoteDetailScreen({ navigation, route }) {
 
         {note.flashcards?.length > 0 ? (
           <View style={styles.flashcardSection}>
-            <Text style={[styles.sectionTitle, { color: themeColors.textPrimary }]}>
-              Flashcardlar
-            </Text>
+            <View style={styles.sectionHeaderWithAction}>
+              <Text style={[styles.sectionTitle, { color: themeColors.textPrimary }]}> 
+                Flashcardlar
+              </Text>
+              <Pressable
+                onPress={confirmDeleteFlashcards}
+                hitSlop={8}
+                style={({ pressed }) => [styles.deleteIconButton, pressed && styles.sheetPressed]}
+              >
+                <Ionicons name="trash-outline" size={18} color="#EF4444" />
+              </Pressable>
+            </View>
             <ScrollView horizontal showsHorizontalScrollIndicator={false}>
               {note.flashcards.map((card, index) => (
                 <Flashcard
@@ -932,6 +1057,59 @@ export default function NoteDetailScreen({ navigation, route }) {
           >
             <View style={styles.sheetHandle} />
             <Text style={[styles.sheetTitle, { color: themeColors.textPrimary }]}>
+              Soru Türü Seç
+            </Text>
+
+            <Text style={[styles.selectorGroupLabel, { color: themeColors.textSecondary }]}> 
+              Soru Dili Seç
+            </Text>
+            <View style={styles.selectorGroup}>
+              {[
+                { label: 'Türkçe', value: 'tr' },
+                { label: 'İngilizce', value: 'en' },
+              ].map((option) => {
+                const selected = selectedQuestionLanguage === option.value;
+
+                return (
+                  <Pressable
+                    key={option.value}
+                    onPress={() => setSelectedQuestionLanguage(option.value)}
+                    style={({ pressed }) => [
+                      styles.questionTypeOption,
+                      {
+                        flex: 1,
+                        borderColor: selected ? colors.primary : themeColors.border,
+                        backgroundColor: selected
+                          ? 'rgba(124, 58, 237, 0.12)'
+                          : themeColors.background,
+                      },
+                      pressed && styles.sheetPressed,
+                    ]}
+                  >
+                    <View
+                      style={[
+                        styles.radioOuter,
+                        { borderColor: selected ? colors.primary : themeColors.border },
+                      ]}
+                    >
+                      {selected ? <View style={styles.radioInner} /> : null}
+                    </View>
+                    <View style={styles.questionTypeTextWrap}>
+                      <Text
+                        style={[
+                          styles.questionTypeTitle,
+                          { color: themeColors.textPrimary },
+                        ]}
+                      >
+                        {option.label}
+                      </Text>
+                    </View>
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            <Text style={[styles.selectorGroupLabel, { color: themeColors.textSecondary }]}> 
               Soru Türü Seç
             </Text>
 
@@ -1081,6 +1259,27 @@ export default function NoteDetailScreen({ navigation, route }) {
               </Text>
             </Pressable>
 
+            {note.questions ? (
+              <Pressable
+                onPress={() => {
+                  setShareSheetVisible(false);
+                  setQuestionExportVisible(true);
+                }}
+                style={({ pressed }) => [
+                  styles.sheetOption,
+                  { borderColor: themeColors.border },
+                  pressed && styles.sheetPressed,
+                ]}
+              >
+                <Ionicons name="document-text-outline" size={22} color={colors.primary} />
+                <Text
+                  style={[styles.sheetOptionText, { color: themeColors.textPrimary }]}
+                >
+                  Soruları PDF Olarak Aktar
+                </Text>
+              </Pressable>
+            ) : null}
+
             <Pressable
               onPress={() => setShareSheetVisible(false)}
               style={({ pressed }) => [
@@ -1093,6 +1292,12 @@ export default function NoteDetailScreen({ navigation, route }) {
           </Pressable>
         </Pressable>
       </Modal>
+
+      <QuestionExportModal
+        note={note}
+        onClose={() => setQuestionExportVisible(false)}
+        visible={questionExportVisible}
+      />
     </SafeAreaView>
   );
 }
@@ -1444,13 +1649,28 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     padding: 16,
   },
+  sectionHeaderWithAction: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
   sectionTitle: {
     fontSize: typography.sizes.xl,
     fontWeight: typography.weights.bold,
     marginBottom: 12,
   },
+  deleteIconButton: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 28,
+    minWidth: 28,
+  },
   summaryBlock: {
     gap: 16,
+  },
+  summarySection: {
+    marginBottom: 16,
   },
   summaryCardIcon: {
     marginBottom: 10,
@@ -1519,6 +1739,18 @@ const styles = StyleSheet.create({
     fontSize: typography.sizes.lg,
     fontWeight: typography.weights.bold,
     marginBottom: 8,
+  },
+  selectorGroupLabel: {
+    fontSize: typography.sizes.xs,
+    fontWeight: typography.weights.bold,
+    letterSpacing: 0.7,
+    marginBottom: 8,
+    marginTop: 8,
+    textTransform: 'uppercase',
+  },
+  selectorGroup: {
+    flexDirection: 'row',
+    gap: 8,
   },
   subjectPill: {
     borderRadius: 999,

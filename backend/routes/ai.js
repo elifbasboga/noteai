@@ -37,7 +37,7 @@ async function callGeminiForJson(prompt) {
   return parseJSON(result.response.text());
 }
 
-function getQuestionPromptDetails(questionType) {
+function getQuestionPromptDetails(questionType, labels) {
   if (questionType === 'multipleChoice') {
     return {
       instruction: 'Generate 5 multiple choice questions only.',
@@ -58,7 +58,11 @@ function getQuestionPromptDetails(questionType) {
       instruction: 'Generate 5 true/false questions only.',
       schema: `{
   "trueFalse": [
-    { "question": "...", "answer": true }
+    {
+      "question": "...",
+      "answer": true,
+      "trueFalseLabels": {"true": "${labels.true}", "false": "${labels.false}"}
+    }
   ]
 }`,
     };
@@ -88,12 +92,32 @@ function getQuestionPromptDetails(questionType) {
     }
   ],
   "trueFalse": [
-    { "question": "...", "answer": true }
+    {
+      "question": "...",
+      "answer": true,
+      "trueFalseLabels": {"true": "${labels.true}", "false": "${labels.false}"}
+    }
   ],
   "openEnded": [
     { "question": "...", "answer": "Detailed answer here" }
   ]
 }`,
+  };
+}
+
+function getLanguagePrompt(language) {
+  if (language === 'en') {
+    return {
+      instruction:
+        'Generate all questions, options, and answers in English. For true/false questions, include trueFalseLabels: {"true": "True", "false": "False"}.',
+      labels: { true: 'True', false: 'False' },
+    };
+  }
+
+  return {
+    instruction:
+      'Generate all questions, options, and answers in Turkish. For true/false questions, use "Doğru" and "Yanlış" as the boolean labels — the question JSON should include a field trueFalseLabels: {"true": "Doğru", "false": "Yanlış"}.',
+    labels: { true: 'Doğru', false: 'Yanlış' },
   };
 }
 
@@ -145,14 +169,21 @@ router.post('/generate-questions', async (req, res, next) => {
     const questionType = allowedTypes.includes(req.body.questionType)
       ? req.body.questionType
       : 'mixed';
-    const promptDetails = getQuestionPromptDetails(questionType);
+    const language = req.body.language === 'en' ? 'en' : 'tr';
+    const labels =
+      language === 'en'
+        ? { true: 'True', false: 'False' }
+        : { true: 'Doğru', false: 'Yanlış' };
+    const promptDetails = getQuestionPromptDetails(questionType, labels);
+    const languagePrompt = getLanguagePrompt(language);
     const questions = await callGeminiForJson(`Based on these ${subject} notes, generate exam questions:
 
 ${text}
 
 Return ONLY a valid JSON object, no markdown, no backticks:
 ${promptDetails.schema}
-${promptDetails.instruction}`);
+${promptDetails.instruction}
+${languagePrompt.instruction}`);
 
     res.json({
       success: true,

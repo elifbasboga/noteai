@@ -94,13 +94,18 @@ export const ApiService = {
     return data.summary;
   },
 
-  generateQuestions: async (text, subject, questionType = 'mixed') => {
+  generateQuestions: async (
+    text,
+    subject,
+    questionType = 'mixed',
+    language = 'tr'
+  ) => {
     const data = await request('/ai/generate-questions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ text, subject, questionType }),
+      body: JSON.stringify({ text, subject, questionType, language }),
     });
 
     return data.questions;

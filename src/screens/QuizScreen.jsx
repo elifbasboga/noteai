@@ -108,6 +108,13 @@ function buildQuestions(notes, subject) {
   });
 }
 
+function getTrueFalseLabels(question) {
+  return {
+    true: question?.trueFalseLabels?.true || 'Doğru',
+    false: question?.trueFalseLabels?.false || 'Yanlış',
+  };
+}
+
 export default function QuizScreen({ navigation, route }) {
   const colorScheme = useAppTheme();
   const themeColors = getThemeColors(colorScheme);
@@ -366,24 +373,28 @@ export default function QuizScreen({ navigation, route }) {
 
         {currentQuestion.type === 'trueFalse' ? (
           <View style={styles.trueFalseRow}>
-            {(currentQuestion.answerOrder || [true, false]).map((value) => (
-              <Pressable
-                key={`${currentQuestion.id}-${value}`}
-                onPress={() => selectAnswer(value)}
-                style={[
-                  styles.trueFalseButton,
-                  {
-                    backgroundColor: themeColors.surface,
-                    borderColor: themeColors.border,
-                  },
-                  getTrueFalseStyle(value),
-                ]}
-              >
-                <Text style={[styles.optionText, { color: themeColors.textPrimary }]}>
-                  {value ? 'Doğru' : 'Yanlış'}
-                </Text>
-              </Pressable>
-            ))}
+            {(currentQuestion.answerOrder || [true, false]).map((value) => {
+              const labels = getTrueFalseLabels(currentQuestion);
+
+              return (
+                <Pressable
+                  key={`${currentQuestion.id}-${value}`}
+                  onPress={() => selectAnswer(value)}
+                  style={[
+                    styles.trueFalseButton,
+                    {
+                      backgroundColor: themeColors.surface,
+                      borderColor: themeColors.border,
+                    },
+                    getTrueFalseStyle(value),
+                  ]}
+                >
+                  <Text style={[styles.optionText, { color: themeColors.textPrimary }]}> 
+                    {value ? labels.true : labels.false}
+                  </Text>
+                </Pressable>
+              );
+            })}
           </View>
         ) : null}
 

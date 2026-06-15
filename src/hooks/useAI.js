@@ -27,8 +27,15 @@ export function useAI() {
   const summarize = (text, subject) =>
     runAction(() => ApiService.summarize(text, subject));
 
-  const generateQuestions = (text, subject, questionType = 'mixed') =>
-    runAction(() => ApiService.generateQuestions(text, subject, questionType));
+  const generateQuestions = (
+    text,
+    subject,
+    questionType = 'mixed',
+    language = 'tr'
+  ) =>
+    runAction(() =>
+      ApiService.generateQuestions(text, subject, questionType, language)
+    );
 
   const generateFlashcards = (text, subject) =>
     runAction(() => ApiService.generateFlashcards(text, subject));

@@ -8,7 +8,7 @@ const initialState = {
   exams: [],
   profile: { name: '', university: '', department: '' },
   quizResults: [],
-  themeMode: 'system',
+  themeMode: 'light',
 };
 
 const useNotesStore = create(

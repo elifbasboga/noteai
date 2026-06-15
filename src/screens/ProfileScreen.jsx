@@ -91,6 +91,7 @@ export default function ProfileScreen() {
   const resetStore = useNotesStore((state) => state.resetStore);
   const themeMode = useNotesStore((state) => state.themeMode);
   const setThemeMode = useNotesStore((state) => state.setThemeMode);
+  const displayThemeMode = themeMode === 'dark' ? 'dark' : 'light';
   const [editVisible, setEditVisible] = useState(false);
   const totalFlashcards = notes.reduce(
     (total, note) => total + (note.flashcards?.length || 0),
@@ -435,7 +436,7 @@ export default function ProfileScreen() {
           <ThemeSelector
             setThemeMode={setThemeMode}
             themeColors={themeColors}
-            themeMode={themeMode}
+            themeMode={displayThemeMode}
           />
           <SettingsRow
             danger
@@ -508,7 +509,6 @@ function SettingsRow({ danger, label, onPress, value, themeColors }) {
 
 function ThemeSelector({ setThemeMode, themeColors, themeMode }) {
   const options = [
-    { label: 'Sistem', value: 'system' },
     { label: 'Açık', value: 'light' },
     { label: 'Koyu', value: 'dark' },
   ];
