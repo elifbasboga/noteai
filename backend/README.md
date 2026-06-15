@@ -15,6 +15,7 @@
 - POST /api/ai/summarize
 - POST /api/ai/generate-questions
 - POST /api/ai/generate-flashcards
+- POST /api/ai/chat
 
 ## Free tier
 

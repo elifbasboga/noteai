@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, View, useColorScheme } from 'react-native';
 
 import CalendarScreen from '../screens/CalendarScreen';
+import ChatScreen from '../screens/ChatScreen';
 import HomeScreen from '../screens/HomeScreen';
 import SplashScreen from '../screens/onboarding/SplashScreen';
 import WelcomeScreen from '../screens/onboarding/WelcomeScreen';
@@ -161,6 +162,7 @@ export default function AppNavigator() {
             component={FlashcardReviewScreen}
           />
           <Stack.Screen name="Quiz" component={QuizScreen} />
+          <Stack.Screen name="Chat" component={ChatScreen} />
         </>
       ) : (
         <>

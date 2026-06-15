@@ -30,6 +30,44 @@ function shuffle(items) {
   return shuffled;
 }
 
+function shuffleOptions(question) {
+  if (question.type === 'multipleChoice') {
+    const correctText = question.options.find((option) =>
+      option.startsWith(`${question.correct})`)
+    );
+
+    if (!correctText) {
+      return question;
+    }
+
+    const shuffled = shuffle(question.options);
+    const newCorrectIndex = shuffled.findIndex((option) => option === correctText);
+    const labels = ['A', 'B', 'C', 'D'];
+    const relabeled = shuffled.map((option, index) => {
+      const labelEndIndex = option.indexOf(')');
+      const optionText =
+        labelEndIndex >= 0 ? option.substring(labelEndIndex + 1) : ` ${option}`;
+
+      return `${labels[index]})${optionText}`;
+    });
+
+    return {
+      ...question,
+      options: relabeled,
+      correct: labels[newCorrectIndex],
+    };
+  }
+
+  if (question.type === 'trueFalse') {
+    return {
+      ...question,
+      answerOrder: Math.random() < 0.5 ? [true, false] : [false, true],
+    };
+  }
+
+  return question;
+}
+
 function buildQuestions(notes, subject) {
   return notes.flatMap((note) => {
     const noteSubject = note.subject || 'Genel';
@@ -43,21 +81,30 @@ function buildQuestions(notes, subject) {
     }
 
     const multipleChoice = (note.questions.multipleChoice || []).map(
-      (question, index) => ({
+      (question, index) =>
+        shuffleOptions({
+          ...question,
+          id: `${note.id}_mc_${index}`,
+          subject: noteSubject,
+          type: 'multipleChoice',
+        })
+    );
+    const trueFalse = (note.questions.trueFalse || []).map((question, index) =>
+      shuffleOptions({
         ...question,
-        id: `${note.id}_mc_${index}`,
+        id: `${note.id}_tf_${index}`,
         subject: noteSubject,
-        type: 'multipleChoice',
+        type: 'trueFalse',
       })
     );
-    const trueFalse = (note.questions.trueFalse || []).map((question, index) => ({
+    const openEnded = (note.questions.openEnded || []).map((question, index) => ({
       ...question,
-      id: `${note.id}_tf_${index}`,
+      id: `${note.id}_open_${index}`,
       subject: noteSubject,
-      type: 'trueFalse',
+      type: 'openEnded',
     }));
 
-    return [...multipleChoice, ...trueFalse];
+    return [...multipleChoice, ...trueFalse, ...openEnded];
   });
 }
 
@@ -93,6 +140,10 @@ export default function QuizScreen({ navigation, route }) {
   function getCorrectAnswer(question) {
     if (question.type === 'multipleChoice') {
       return question.correct;
+    }
+
+    if (question.type === 'openEnded') {
+      return 'revealed';
     }
 
     return question.answer;
@@ -160,6 +211,18 @@ export default function QuizScreen({ navigation, route }) {
     }
 
     return {};
+  }
+
+  function getQuestionTypeLabel(type) {
+    if (type === 'multipleChoice') {
+      return 'Çoktan Seçmeli';
+    }
+
+    if (type === 'trueFalse') {
+      return 'Doğru/Yanlış';
+    }
+
+    return 'Açık Uçlu';
   }
 
   function getPerformanceMessage() {
@@ -266,9 +329,7 @@ export default function QuizScreen({ navigation, route }) {
         >
           <View style={styles.typeBadge}>
             <Text style={styles.typeBadgeText}>
-              {currentQuestion.type === 'multipleChoice'
-                ? 'Çoktan Seçmeli'
-                : 'Doğru/Yanlış'}
+              {getQuestionTypeLabel(currentQuestion.type)}
             </Text>
           </View>
           <Text style={[styles.questionText, { color: themeColors.textPrimary }]}>
@@ -301,9 +362,11 @@ export default function QuizScreen({ navigation, route }) {
               );
             })}
           </View>
-        ) : (
+        ) : null}
+
+        {currentQuestion.type === 'trueFalse' ? (
           <View style={styles.trueFalseRow}>
-            {[true, false].map((value) => (
+            {(currentQuestion.answerOrder || [true, false]).map((value) => (
               <Pressable
                 key={`${currentQuestion.id}-${value}`}
                 onPress={() => selectAnswer(value)}
@@ -322,7 +385,42 @@ export default function QuizScreen({ navigation, route }) {
               </Pressable>
             ))}
           </View>
-        )}
+        ) : null}
+
+        {currentQuestion.type === 'openEnded' ? (
+          <View style={styles.openEndedWrap}>
+            <Pressable
+              onPress={() =>
+                setSelectedAnswer((current) =>
+                  current === 'revealed' ? null : 'revealed'
+                )
+              }
+              style={({ pressed }) => [
+                styles.secondaryButton,
+                { borderColor: themeColors.border },
+                pressed && styles.pressed,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.secondaryButtonText,
+                  { color: themeColors.textPrimary },
+                ]}
+              >
+                {selectedAnswer === 'revealed' ? 'Cevabı Gizle' : 'Cevabı Gör'}
+              </Text>
+            </Pressable>
+
+            {selectedAnswer === 'revealed' ? (
+              <View style={styles.answerCard}>
+                <Text style={styles.answerLabel}>Cevap</Text>
+                <Text style={styles.answerText}>
+                  {currentQuestion.answer || 'Bu soru için cevap bulunamadı.'}
+                </Text>
+              </View>
+            ) : null}
+          </View>
+        ) : null}
 
         {selectedAnswer !== null ? (
           <Pressable style={styles.primaryButton} onPress={goNext}>
@@ -342,6 +440,26 @@ const styles = StyleSheet.create({
     height: 42,
     justifyContent: 'center',
     width: 42,
+  },
+  answerCard: {
+    backgroundColor: 'rgba(16, 185, 129, 0.18)',
+    borderColor: colors.success,
+    borderRadius: 14,
+    borderWidth: 1,
+    marginTop: 14,
+    padding: 14,
+  },
+  answerLabel: {
+    color: colors.success,
+    fontSize: typography.sizes.xs,
+    fontWeight: typography.weights.bold,
+    marginBottom: 8,
+    textTransform: 'uppercase',
+  },
+  answerText: {
+    color: colors.success,
+    fontSize: typography.sizes.md,
+    lineHeight: 23,
   },
   centerState: {
     alignItems: 'center',
@@ -398,6 +516,12 @@ const styles = StyleSheet.create({
   optionsStack: {
     gap: 10,
     marginBottom: 20,
+  },
+  openEndedWrap: {
+    marginBottom: 20,
+  },
+  pressed: {
+    opacity: 0.8,
   },
   primaryButton: {
     alignItems: 'center',

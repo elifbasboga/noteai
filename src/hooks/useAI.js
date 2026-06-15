@@ -27,11 +27,14 @@ export function useAI() {
   const summarize = (text, subject) =>
     runAction(() => ApiService.summarize(text, subject));
 
-  const generateQuestions = (text, subject) =>
-    runAction(() => ApiService.generateQuestions(text, subject));
+  const generateQuestions = (text, subject, questionType = 'mixed') =>
+    runAction(() => ApiService.generateQuestions(text, subject, questionType));
 
   const generateFlashcards = (text, subject) =>
     runAction(() => ApiService.generateFlashcards(text, subject));
+
+  const chat = (messages, noteContent, subject) =>
+    runAction(() => ApiService.chat(messages, noteContent, subject));
 
   return {
     loading,
@@ -40,5 +43,6 @@ export function useAI() {
     summarize,
     generateQuestions,
     generateFlashcards,
+    chat,
   };
 }

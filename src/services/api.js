@@ -94,13 +94,13 @@ export const ApiService = {
     return data.summary;
   },
 
-  generateQuestions: async (text, subject) => {
+  generateQuestions: async (text, subject, questionType = 'mixed') => {
     const data = await request('/ai/generate-questions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ text, subject }),
+      body: JSON.stringify({ text, subject, questionType }),
     });
 
     return data.questions;
@@ -116,5 +116,17 @@ export const ApiService = {
     });
 
     return data.flashcards;
+  },
+
+  chat: async (messages, noteContent, subject) => {
+    const data = await request('/ai/chat', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ messages, noteContent, subject }),
+    });
+
+    return data.message;
   },
 };

@@ -6,7 +6,7 @@ const MODEL = 'gemini-2.5-flash';
 const SYSTEM_INSTRUCTION =
   'You are an expert academic assistant. Always respond in the same language as the input text. Be concise and structured. Always return valid JSON only, no markdown, no backticks.';
 
-function getGeminiModel() {
+function getGeminiModel(systemInstruction = SYSTEM_INSTRUCTION) {
   if (!process.env.GEMINI_API_KEY) {
     const error = new Error('GEMINI_API_KEY is not configured');
     error.statusCode = 500;
@@ -14,11 +14,13 @@ function getGeminiModel() {
   }
 
   const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+  const options = { model: MODEL };
 
-  return genAI.getGenerativeModel({
-    model: MODEL,
-    systemInstruction: SYSTEM_INSTRUCTION,
-  });
+  if (systemInstruction) {
+    options.systemInstruction = systemInstruction;
+  }
+
+  return genAI.getGenerativeModel(options);
 }
 
 function parseJSON(text) {
@@ -33,6 +35,66 @@ async function callGeminiForJson(prompt) {
   const model = getGeminiModel();
   const result = await model.generateContent(prompt);
   return parseJSON(result.response.text());
+}
+
+function getQuestionPromptDetails(questionType) {
+  if (questionType === 'multipleChoice') {
+    return {
+      instruction: 'Generate 5 multiple choice questions only.',
+      schema: `{
+  "multipleChoice": [
+    {
+      "question": "...",
+      "options": ["A) ...", "B) ...", "C) ...", "D) ..."],
+      "correct": "A"
+    }
+  ]
+}`,
+    };
+  }
+
+  if (questionType === 'trueFalse') {
+    return {
+      instruction: 'Generate 5 true/false questions only.',
+      schema: `{
+  "trueFalse": [
+    { "question": "...", "answer": true }
+  ]
+}`,
+    };
+  }
+
+  if (questionType === 'openEnded') {
+    return {
+      instruction:
+        'Generate 4 open-ended questions with detailed model answers only.',
+      schema: `{
+  "openEnded": [
+    { "question": "...", "answer": "Detailed answer here" }
+  ]
+}`,
+    };
+  }
+
+  return {
+    instruction:
+      'Generate 3 multiple choice, 2 true/false, 2 open-ended questions. For open-ended questions, also provide a detailed model answer.',
+    schema: `{
+  "multipleChoice": [
+    {
+      "question": "...",
+      "options": ["A) ...", "B) ...", "C) ...", "D) ..."],
+      "correct": "A"
+    }
+  ],
+  "trueFalse": [
+    { "question": "...", "answer": true }
+  ],
+  "openEnded": [
+    { "question": "...", "answer": "Detailed answer here" }
+  ]
+}`,
+  };
 }
 
 function validateTextBody(req) {
@@ -79,27 +141,18 @@ Return ONLY a valid JSON object, no markdown, no backticks:
 router.post('/generate-questions', async (req, res, next) => {
   try {
     const { text, subject } = validateTextBody(req);
+    const allowedTypes = ['multipleChoice', 'trueFalse', 'openEnded', 'mixed'];
+    const questionType = allowedTypes.includes(req.body.questionType)
+      ? req.body.questionType
+      : 'mixed';
+    const promptDetails = getQuestionPromptDetails(questionType);
     const questions = await callGeminiForJson(`Based on these ${subject} notes, generate exam questions:
 
 ${text}
 
 Return ONLY a valid JSON object, no markdown, no backticks:
-{
-  "multipleChoice": [
-    {
-      "question": "...",
-      "options": ["A) ...", "B) ...", "C) ...", "D) ..."],
-      "correct": "A"
-    }
-  ],
-  "trueFalse": [
-    { "question": "...", "answer": true }
-  ],
-  "openEnded": [
-    { "question": "..." }
-  ]
-}
-Generate 3 multiple choice, 2 true/false, 2 open-ended questions.`);
+${promptDetails.schema}
+${promptDetails.instruction}`);
 
     res.json({
       success: true,
@@ -128,6 +181,66 @@ Generate 8-10 flashcards covering the most important concepts.`);
     res.json({
       success: true,
       flashcards: Array.isArray(result.flashcards) ? result.flashcards : [],
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post('/chat', async (req, res, next) => {
+  try {
+    const { messages, noteContent, subject } = req.body;
+
+    if (!Array.isArray(messages) || messages.length === 0) {
+      const error = new Error('messages are required');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    if (
+      !noteContent ||
+      typeof noteContent !== 'string' ||
+      noteContent.trim().length === 0
+    ) {
+      const error = new Error('noteContent is required');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const safeSubject =
+      typeof subject === 'string' && subject.trim().length > 0
+        ? subject.trim()
+        : 'general';
+    const systemPrompt = `You are a helpful academic assistant for the subject: ${safeSubject}.
+You have access to the following study notes:
+
+${noteContent.trim()}
+
+Answer questions based on these notes. Be concise and helpful.
+Respond in the same language as the user's question.`;
+
+    const conversationHistory = messages
+      .filter(
+        (message) =>
+          message &&
+          typeof message.content === 'string' &&
+          ['user', 'assistant'].includes(message.role)
+      )
+      .map(
+        (message) =>
+          `${message.role === 'user' ? 'User' : 'Assistant'}: ${
+            message.content
+          }`
+      )
+      .join('\n');
+
+    const model = getGeminiModel('You are a helpful academic assistant.');
+    const prompt = `${systemPrompt}\n\nConversation:\n${conversationHistory}\n\nAssistant:`;
+    const result = await model.generateContent(prompt);
+
+    res.json({
+      success: true,
+      message: result.response.text(),
     });
   } catch (error) {
     next(error);

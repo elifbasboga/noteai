@@ -6,12 +6,15 @@ import {
   ActivityIndicator,
   Alert,
   Animated,
+  LayoutAnimation,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   Share,
   StyleSheet,
   Text,
+  UIManager,
   View,
   useColorScheme,
 } from 'react-native';
@@ -24,6 +27,35 @@ import { colors, getThemeColors } from '../theme/colors';
 import { typography } from '../theme/typography';
 
 const subjectColors = ['#7C3AED', '#0F6E56', '#854F0B', '#993556', '#185FA5'];
+const questionTypeOptions = [
+  {
+    value: 'multipleChoice',
+    title: 'Test (Çoktan Seçmeli)',
+    description: 'Yalnızca çoktan seçmeli sorular',
+  },
+  {
+    value: 'trueFalse',
+    title: 'Doğru/Yanlış',
+    description: 'Yalnızca doğru/yanlış soruları',
+  },
+  {
+    value: 'openEnded',
+    title: 'Klasik (Açık Uçlu)',
+    description: 'Yanıtlı açık uçlu sorular',
+  },
+  {
+    value: 'mixed',
+    title: 'Karışık',
+    description: 'Tüm soru türleri',
+  },
+];
+
+if (
+  Platform.OS === 'android' &&
+  UIManager.setLayoutAnimationEnabledExperimental
+) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
 function formatCreatedDate(value) {
   const date = new Date(value);
@@ -232,6 +264,9 @@ export default function NoteDetailScreen({ navigation, route }) {
   const [selectedAnswers, setSelectedAnswers] = useState({});
   const [shareSheetVisible, setShareSheetVisible] = useState(false);
   const [exportingPdf, setExportingPdf] = useState(false);
+  const [isContentExpanded, setIsContentExpanded] = useState(false);
+  const [questionTypeSheetVisible, setQuestionTypeSheetVisible] = useState(false);
+  const [selectedQuestionType, setSelectedQuestionType] = useState('mixed');
 
   const subjectColor = useMemo(() => {
     if (!note?.subject) {
@@ -286,9 +321,9 @@ export default function NoteDetailScreen({ navigation, route }) {
     throw new Error('AI işlemleri için önce not içeriği eklemelisin.');
   }
 
-  async function runAIAction(actionName) {
+  async function runAIAction(actionName, questionType = 'mixed') {
     setLocalError(null);
-    setLastAction(actionName);
+    setLastAction({ name: actionName, questionType });
     setActiveAction(actionName);
 
     try {
@@ -305,7 +340,8 @@ export default function NoteDetailScreen({ navigation, route }) {
       if (actionName === 'questions') {
         const questions = await generateQuestions(
           sourceText,
-          note.subject || 'Genel'
+          note.subject || 'Genel',
+          questionType
         );
 
         if (questions) {
@@ -333,8 +369,18 @@ export default function NoteDetailScreen({ navigation, route }) {
 
   function retryLastAction() {
     if (lastAction) {
-      runAIAction(lastAction);
+      runAIAction(lastAction.name, lastAction.questionType);
     }
+  }
+
+  function toggleContent() {
+    LayoutAnimation.easeInEaseOut();
+    setIsContentExpanded((current) => !current);
+  }
+
+  function confirmQuestionGeneration() {
+    setQuestionTypeSheetVisible(false);
+    runAIAction('questions', selectedQuestionType);
   }
 
   function selectAnswer(key, value) {
@@ -496,9 +542,25 @@ export default function NoteDetailScreen({ navigation, route }) {
           </View>
 
           {note.content ? (
-            <Text style={[styles.noteContent, { color: themeColors.textPrimary }]}>
-              {note.content}
-            </Text>
+            <View>
+              <Text
+                numberOfLines={isContentExpanded ? undefined : 3}
+                style={[styles.noteContent, { color: themeColors.textPrimary }]}
+              >
+                {note.content}
+              </Text>
+              <Pressable
+                onPress={toggleContent}
+                style={({ pressed }) => [
+                  styles.contentToggle,
+                  pressed && styles.sheetPressed,
+                ]}
+              >
+                <Text style={styles.contentToggleText}>
+                  {isContentExpanded ? 'İçeriği Gizle ▲' : 'İçeriği Göster ▼'}
+                </Text>
+              </Pressable>
+            </View>
           ) : null}
 
           {note.fileUri ? (
@@ -537,7 +599,7 @@ export default function NoteDetailScreen({ navigation, route }) {
           </Pressable>
           <Pressable
             disabled={isBusy}
-            onPress={() => runAIAction('questions')}
+            onPress={() => setQuestionTypeSheetVisible(true)}
             style={({ pressed }) => [
               styles.actionButton,
               { backgroundColor: '#185FA5' },
@@ -708,6 +770,12 @@ export default function NoteDetailScreen({ navigation, route }) {
                 <Text style={[styles.bodyText, { color: themeColors.textSecondary }]}>
                   {question.question}
                 </Text>
+                {question.answer ? (
+                  <View style={styles.openAnswerBox}>
+                    <Text style={styles.openAnswerLabel}>Model cevap</Text>
+                    <Text style={styles.openAnswerText}>{question.answer}</Text>
+                  </View>
+                ) : null}
               </View>
             ))}
           </View>
@@ -731,6 +799,109 @@ export default function NoteDetailScreen({ navigation, route }) {
           </View>
         ) : null}
       </ScrollView>
+
+      <Pressable
+        onPress={() => navigation.navigate('Chat', { noteId: note.id })}
+        style={({ pressed }) => [styles.chatFab, pressed && styles.sheetPressed]}
+      >
+        <Ionicons name="chatbubble-ellipses-outline" size={26} color="#FFFFFF" />
+      </Pressable>
+
+      <Modal
+        animationType="slide"
+        onRequestClose={() => setQuestionTypeSheetVisible(false)}
+        transparent
+        visible={questionTypeSheetVisible}
+      >
+        <Pressable
+          style={styles.sheetOverlay}
+          onPress={() => setQuestionTypeSheetVisible(false)}
+        >
+          <Pressable
+            style={[styles.shareSheet, { backgroundColor: themeColors.surface }]}
+          >
+            <View style={styles.sheetHandle} />
+            <Text style={[styles.sheetTitle, { color: themeColors.textPrimary }]}>
+              Soru Türü Seç
+            </Text>
+
+            {questionTypeOptions.map((option) => {
+              const selected = selectedQuestionType === option.value;
+
+              return (
+                <Pressable
+                  key={option.value}
+                  onPress={() => setSelectedQuestionType(option.value)}
+                  style={({ pressed }) => [
+                    styles.questionTypeOption,
+                    {
+                      borderColor: selected ? colors.primary : themeColors.border,
+                      backgroundColor: selected
+                        ? 'rgba(124, 58, 237, 0.12)'
+                        : themeColors.background,
+                    },
+                    pressed && styles.sheetPressed,
+                  ]}
+                >
+                  <View
+                    style={[
+                      styles.radioOuter,
+                      { borderColor: selected ? colors.primary : themeColors.border },
+                    ]}
+                  >
+                    {selected ? <View style={styles.radioInner} /> : null}
+                  </View>
+                  <View style={styles.questionTypeTextWrap}>
+                    <Text
+                      style={[
+                        styles.questionTypeTitle,
+                        { color: themeColors.textPrimary },
+                      ]}
+                    >
+                      {option.title}
+                    </Text>
+                    <Text
+                      style={[
+                        styles.questionTypeDescription,
+                        { color: themeColors.textSecondary },
+                      ]}
+                    >
+                      {option.description}
+                    </Text>
+                  </View>
+                </Pressable>
+              );
+            })}
+
+            <Pressable
+              onPress={confirmQuestionGeneration}
+              style={({ pressed }) => [
+                styles.sheetClose,
+                pressed && styles.sheetPressed,
+              ]}
+            >
+              <Text style={styles.sheetCloseText}>Üret</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => setQuestionTypeSheetVisible(false)}
+              style={({ pressed }) => [
+                styles.cancelSheetButton,
+                { borderColor: themeColors.border },
+                pressed && styles.sheetPressed,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.cancelSheetText,
+                  { color: themeColors.textPrimary },
+                ]}
+              >
+                İptal
+              </Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       <Modal
         animationType="slide"
@@ -858,12 +1029,50 @@ const styles = StyleSheet.create({
     lineHeight: 23,
     marginTop: 6,
   },
+  cancelSheetButton: {
+    alignItems: 'center',
+    borderRadius: 12,
+    borderWidth: 1,
+    justifyContent: 'center',
+    marginTop: 10,
+    minHeight: 48,
+  },
+  cancelSheetText: {
+    fontSize: typography.sizes.md,
+    fontWeight: typography.weights.bold,
+  },
+  chatFab: {
+    alignItems: 'center',
+    backgroundColor: colors.primary,
+    borderRadius: 28,
+    bottom: 24,
+    elevation: 8,
+    height: 56,
+    justifyContent: 'center',
+    position: 'absolute',
+    right: 24,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.22,
+    shadowRadius: 14,
+    width: 56,
+  },
   container: {
     flex: 1,
   },
+  contentToggle: {
+    alignSelf: 'flex-start',
+    marginTop: 10,
+    paddingVertical: 6,
+  },
+  contentToggleText: {
+    color: colors.primary,
+    fontSize: typography.sizes.sm,
+    fontWeight: typography.weights.bold,
+  },
   content: {
     padding: 18,
-    paddingBottom: 34,
+    paddingBottom: 100,
   },
   correctOption: {
     backgroundColor: 'rgba(16, 185, 129, 0.22)',
@@ -981,6 +1190,26 @@ const styles = StyleSheet.create({
     fontSize: typography.sizes.md,
     lineHeight: 24,
   },
+  openAnswerBox: {
+    backgroundColor: 'rgba(16, 185, 129, 0.16)',
+    borderColor: colors.success,
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    marginTop: 10,
+    padding: 12,
+  },
+  openAnswerLabel: {
+    color: colors.success,
+    fontSize: typography.sizes.xs,
+    fontWeight: typography.weights.bold,
+    marginBottom: 6,
+    textTransform: 'uppercase',
+  },
+  openAnswerText: {
+    color: colors.success,
+    fontSize: typography.sizes.sm,
+    lineHeight: 21,
+  },
   openQuestion: {
     borderTopColor: 'rgba(156, 163, 175, 0.28)',
     borderTopWidth: StyleSheet.hairlineWidth,
@@ -1018,6 +1247,43 @@ const styles = StyleSheet.create({
     fontWeight: typography.weights.bold,
     lineHeight: 23,
     marginBottom: 8,
+  },
+  questionTypeDescription: {
+    fontSize: typography.sizes.sm,
+    lineHeight: 19,
+    marginTop: 2,
+  },
+  questionTypeOption: {
+    alignItems: 'center',
+    borderRadius: 14,
+    borderWidth: 1,
+    flexDirection: 'row',
+    marginTop: 10,
+    minHeight: 62,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  questionTypeTextWrap: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  questionTypeTitle: {
+    fontSize: typography.sizes.md,
+    fontWeight: typography.weights.bold,
+  },
+  radioInner: {
+    backgroundColor: colors.primary,
+    borderRadius: 6,
+    height: 12,
+    width: 12,
+  },
+  radioOuter: {
+    alignItems: 'center',
+    borderRadius: 11,
+    borderWidth: 2,
+    height: 22,
+    justifyContent: 'center',
+    width: 22,
   },
   retryButton: {
     borderColor: '#FFFFFF',
