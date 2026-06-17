@@ -15,6 +15,11 @@ AI-powered smart note assistant for students.
 - Dark/light theme toggle
 - Full data persistence (survives app restarts)
 
+### Privacy & Data Storage
+All user data, including notes, profile details, exam schedules, and quiz history, is stored locally on the device using AsyncStorage. Nothing is sent to or stored in a remote database.
+
+Only the text needed for AI features is transmitted to Google's Gemini API during OCR, summarization, and question generation. That content is used temporarily for processing and is not retained by this application's backend.
+
 ### Tech Stack
 - Frontend: React Native (Expo)
 - Backend: Node.js + Express
@@ -36,15 +41,43 @@ AI-powered smart note assistant for students.
 4. cd .. && npm start
 5. Scan QR code with Expo Go
 
+### Screenshots
+
+#### Home Screen - Study Mode
+![Çalış](./assets/screenshots/home_study.jpeg)
+The main dashboard showing available study tools including Flashcards and Quiz Mode, with recent activity tracking.
+
+#### Exam Calendar
+![Sınav Takvimi](./assets/screenshots/exam_calendar.jpeg)
+View upcoming exams by month with detailed exam information and preparation status.
+
+#### Question Details & Export Options
+![Soru Detayı](./assets/screenshots/question_detail.jpeg)
+Detailed question view with sharing and export options including PDF export and flashcard creation.
+
+#### Share & Export
+![Paylaş ve Dışa Aktar](./assets/screenshots/share_export.jpeg)
+
+Export and share generated study materials easily. Users can share summaries, export summaries as PDF, share flashcards, and export quiz questions as PDF for offline use and distribution.
+
+#### User Profile
+![Profil - İstatistikler](./assets/screenshots/profile_stats.jpeg)
+User profile showing statistics including total notes, flashcards, quizzes solved, and average score with weekly activity chart.
+
+![Profil - Ayarlar](./assets/screenshots/profile_settings.jpeg)
+Profile settings page with theme customization and data management options.
+
+```md
 ### Project Structure
-src/
-  screens/       - all app screens
-  components/    - reusable components
-  navigation/    - tab + stack navigator
-  store/         - Zustand store (persisted)
-  services/      - API service
-  hooks/         - useAI, useAppTheme
-  theme/         - colors, typography
-backend/
-  routes/        - ai.js, ocr.js
-  middleware/    - errorHandler.js
+
+| Directory | Description |
+|------------|-------------|
+| `src/screens` | Application screens |
+| `src/components` | Reusable UI components |
+| `src/navigation` | Tab and Stack navigation |
+| `src/store` | Zustand state management with persistence |
+| `src/services` | API service layer |
+| `src/hooks` | Custom React hooks (`useAI`, `useAppTheme`, etc.) |
+| `src/theme` | Colors, typography, and theme configuration |
+| `backend/routes` | AI and OCR API endpoints |
+| `backend/middleware` | Express middleware and error handling |
