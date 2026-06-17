@@ -44,14 +44,14 @@ Only the text needed for AI features is transmitted to Google's Gemini API durin
 ### Screenshots
 
 
-| Ekran | Açıklama |
+| Screen | Description |
 |---|---|
-| <img src="./assets/screenshots/home_study.jpeg" width="320" /> | **Home — Study Mode:** Ana kontrol paneli; Flashcard ve Quiz modları ile son aktiviteler. |
-| <img src="./assets/screenshots/exam_calendar.jpeg" width="320" /> | **Exam Calendar:** Aylık sınav görünümü ve hazırlık durumu. |
-| <img src="./assets/screenshots/question_detail.jpeg" width="320" /> | **Question Detail:** Soru detayı, paylaşım ve PDF/flashcard seçenekleri. |
-| <img src="./assets/screenshots/share_export.jpeg" width="320" /> | **Share & Export:** Özetleri ve soruları paylaşma / PDF olarak dışa aktarma. |
-| <img src="./assets/screenshots/profile_stats.jpeg" width="320" /> | **Profile — Stats:** Notlar, flashcard sayısı, geçmiş performans grafiği. |
-| <img src="./assets/screenshots/profile_settings.jpeg" width="320" /> | **Profile — Settings:** Tema ve veri yönetimi ayarları. |
+| <img src="./assets/screenshots/home_study.jpeg" width="320" /> | **Home — Study Mode:** The main dashboard with Flashcards and Quiz modes, showing recent activity. |
+| <img src="./assets/screenshots/exam_calendar.jpeg" width="320" /> | **Exam Calendar:** Monthly view of upcoming exams with preparation status. |
+| <img src="./assets/screenshots/question_detail.jpeg" width="320" /> | **Question Detail:** Detailed question view with sharing, PDF export and flashcard creation options. |
+| <img src="./assets/screenshots/share_export.jpeg" width="320" /> | **Share & Export:** Share summaries and questions, and export as PDF. |
+| <img src="./assets/screenshots/profile_stats.jpeg" width="320" /> | **Profile — Stats:** User statistics including total notes, flashcards, and activity chart. |
+| <img src="./assets/screenshots/profile_settings.jpeg" width="320" /> | **Profile — Settings:** Theme customization and data management options. |
 
 
 ### Project Structure
