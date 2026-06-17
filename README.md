@@ -43,7 +43,6 @@ Only the text needed for AI features is transmitted to Google's Gemini API durin
 
 ### Screenshots
 
-Aşağıda uygulama ekran görüntüleri 2 sütunlu bir galeride gösterilmiştir — görseller küçültülmüş ve açıklamalar sağ tarafta yer alır.
 
 | Ekran | Açıklama |
 |---|---|
