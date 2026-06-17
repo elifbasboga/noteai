@@ -44,30 +44,28 @@ Only the text needed for AI features is transmitted to Google's Gemini API durin
 ### Screenshots
 
 #### Home Screen - Study Mode
-![Çalış](./assets/screenshots/home_study.jpeg)
+<img src="./assets/screenshots/home_study.jpeg" width="600" />
 The main dashboard showing available study tools including Flashcards and Quiz Mode, with recent activity tracking.
 
 #### Exam Calendar
-![Sınav Takvimi](./assets/screenshots/exam_calendar.jpeg)
+<img src="./assets/screenshots/exam_calendar.jpeg" width="600" />
 View upcoming exams by month with detailed exam information and preparation status.
 
 #### Question Details & Export Options
-![Soru Detayı](./assets/screenshots/question_detail.jpeg)
+<img src="./assets/screenshots/question_detail.jpeg" width="600" />
 Detailed question view with sharing and export options including PDF export and flashcard creation.
 
 #### Share & Export
-![Paylaş ve Dışa Aktar](./assets/screenshots/share_export.jpeg)
+<img src="./assets/screenshots/share_export.jpeg" width="600" />
 
 Export and share generated study materials easily. Users can share summaries, export summaries as PDF, share flashcards, and export quiz questions as PDF for offline use and distribution.
 
 #### User Profile
-![Profil - İstatistikler](./assets/screenshots/profile_stats.jpeg)
+<img src="./assets/screenshots/profile_stats.jpeg" width="600" />
 User profile showing statistics including total notes, flashcards, quizzes solved, and average score with weekly activity chart.
 
-![Profil - Ayarlar](./assets/screenshots/profile_settings.jpeg)
+<img src="./assets/screenshots/profile_settings.jpeg" width="600" />
 Profile settings page with theme customization and data management options.
-
-```md
 ### Project Structure
 
 | Directory | Description |
